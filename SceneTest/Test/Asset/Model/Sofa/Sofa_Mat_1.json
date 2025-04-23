@@ -1,0 +1,10 @@
+{
+    "@IResource": null,
+    "mParameterTable": {},
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "BaseColorMap": "Asset/Model/Sofa\\Sofa_M_sofa_chester_D.bmp",
+        "MixedMap": "Asset/Model/Sofa\\Sofa_M_sofa_chester_S.bmp",
+        "NormalMap": "Asset/Model/Sofa\\Sofa_M_sofa_chester_N.bmp"
+    }
+}

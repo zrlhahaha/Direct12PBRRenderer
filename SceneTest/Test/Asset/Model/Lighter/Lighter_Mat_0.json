@@ -1,0 +1,10 @@
+{
+    "@IResource": null,
+    "mParameterTable": {},
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "BaseColorMap": "Asset/Model/Lighter\\Lighter_M_lighter3_D.bmp",
+        "MixedMap": "Asset/Model/Lighter\\Lighter_M_lighter3_S.bmp",
+        "NormalMap": "Asset/Model/Lighter\\Lighter_M_lighter3_N.bmp"
+    }
+}

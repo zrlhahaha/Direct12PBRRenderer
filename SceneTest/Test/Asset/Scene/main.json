@@ -1,0 +1,112 @@
+{
+    "@IResource": null,
+    "mSceneLight": [],
+    "mSceneModel": [
+        {
+            "@SceneObject": {
+                "mName": "brick_wall",
+                "mRotation": {
+                    "x": 90.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 2.0,
+                    "y": 2.0,
+                    "z": 2.0
+                },
+                "mTranslation": {
+                    "x": 0.0,
+                    "y": -1.0,
+                    "z": 0.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/BrickWall/BrickWall_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere",
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                },
+                "mTranslation": {
+                    "x": -3.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/sphere_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "cigar_box",
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                },
+                "mTranslation": {
+                    "x": -1.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/CigarBox/CigarBox_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "lighter",
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 2.0,
+                    "y": 2.0,
+                    "z": 2.0
+                },
+                "mTranslation": {
+                    "x": 3.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/Lighter/Lighter_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sofa",
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                },
+                "mTranslation": {
+                    "x": 4.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sofa/Sofa_Model"
+        }
+    ],
+    "mSkyBoxPath": "Asset/SkyBox/Wild"
+}

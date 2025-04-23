@@ -1,0 +1,10 @@
+{
+    "@IResource": null,
+    "mParameterTable": {},
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "BaseColorMap": "Asset/Model/BrickWall\\BrickWall_M_brick_D.bmp",
+        "MixedMap": "Asset/Model/BrickWall\\BrickWall_M_brick_S.bmp",
+        "NormalMap": "Asset/Model/BrickWall\\BrickWall_M_brick_N.bmp"
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "@IResource": null,
+    "mParameterTable": {},
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "BaseColorMap": "Asset/Model/CigarBox\\CigarBox_M_cigar_box1_D.bmp",
+        "MixedMap": "Asset/Model/CigarBox\\CigarBox_M_cigar_box1_S.bmp",
+        "NormalMap": "Asset/Model/CigarBox\\CigarBox_M_cigar_box1_N.bmp"
+    }
+}

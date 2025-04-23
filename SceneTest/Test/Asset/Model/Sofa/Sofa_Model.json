@@ -1,0 +1,9 @@
+{
+    "@IResource": null,
+    "mMaterialPath": [
+        "Asset/Model/Sofa\\Sofa_Mat_0",
+        "Asset/Model/Sofa\\Sofa_Mat_1",
+        "Asset/Model/Sofa\\Sofa_Mat_2"
+    ],
+    "mMeshPath": "Asset/Model/Sofa\\Sofa_Mesh"
+}
