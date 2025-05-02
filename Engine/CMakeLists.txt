@@ -121,4 +121,9 @@ target_link_libraries(MEngine PUBLIC ${VENDOR_LIB})
 
 target_compile_options(MEngine PUBLIC -msse4.1)
 
+find_package(directx-dxc CONFIG REQUIRED)
+target_link_libraries(main PRIVATE Microsoft::DirectXShaderCompiler)
+
+find_package(directx-dxc CONFIG REQUIRED)
+target_link_libraries(main PRIVATE Microsoft::DirectXShaderCompiler)
 
