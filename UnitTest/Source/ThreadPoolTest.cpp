@@ -2,13 +2,12 @@
 #include "Utils/Thread.h"
 #include "format"
 
-// 设置线程睡眠时间
+// sleep for a while
 void simulate_hard_computation()
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(2000 + std::rand() % 2000));
 }
 
-// 添加并输出结果
 void multiply_output(int& out, const int a, const int b)
 {
     simulate_hard_computation();
@@ -16,7 +15,6 @@ void multiply_output(int& out, const int a, const int b)
     std::cout << std::format("{} * {} = {}\n", a, b, out);
 }
 
-// 结果返回
 int multiply_return(const int a, const int b)
 {
     simulate_hard_computation();

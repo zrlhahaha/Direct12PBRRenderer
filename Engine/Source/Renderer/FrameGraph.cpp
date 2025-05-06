@@ -38,7 +38,7 @@ namespace MRenderer
         // get pass execution order by topology sort from effective pass
         while (effective_pass.size() != mPassOrder.size())
         {
-            uint32 count = mPassOrder.size();
+            size_t count = mPassOrder.size();
 
             for (IRenderPass* pass : effective_pass)
             {
@@ -259,20 +259,20 @@ namespace MRenderer
         if (key.Info.Format != ETextureFormat_DepthStencil)
         {
             auto render_target = GD3D12Device->CreateRenderTarget(key.Info.Width, key.Info.Height, key.Info.Format);
-            uint32 index = mTransientResources[key].size();
+            size_t index = mTransientResources[key].size();
             render_target->Resource()->SetName((std::wstring(L"TransientRenderTarget") + std::to_wstring(index)).data());
 
             mTransientResources[key].emplace_back(true, render_target);
-            return index;
+            return static_cast<uint32>(index);
         }
         else
         {
             auto depth_stencil = GD3D12Device->CreateDepthStencil(key.Info.Width, key.Info.Height);
-            uint32 index = mTransientResources[key].size();
+            size_t index = mTransientResources[key].size();
             depth_stencil->Resource()->SetName((std::wstring(L"TransientDepthStencil") + std::to_wstring(index)).data());
 
             mTransientResources[key].emplace_back(true, depth_stencil);
-            return index;
+            return static_cast<uint32>(index);
         }
     }
 

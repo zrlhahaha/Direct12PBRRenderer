@@ -26,7 +26,6 @@
 */
 
 #pragma once
-
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -39,7 +38,8 @@
 #include <cstdlib>
 
 
-
+#pragma warning(push)
+#pragma warning(disable: 4267)
 namespace cmdline {
 
     namespace detail {
@@ -739,7 +739,7 @@ namespace cmdline {
                     actual = read(value);
                     has = true;
                 }
-                catch (const std::exception& e) {
+                catch (...) {
                     return false;
                 }
                 return true;
@@ -825,3 +825,5 @@ namespace cmdline {
     };
 
 } // cmdline
+
+#pragma warning(pop)

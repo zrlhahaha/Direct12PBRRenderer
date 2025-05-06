@@ -48,7 +48,7 @@ namespace MRenderer
         ThrowIfFailed(mCompiler->Compile(
             &shader_buffer, // pSource 0
             compile_arguments, // pSourceName
-            std::size(compile_arguments), // pEntryPoint
+            static_cast<uint32>(std::size(compile_arguments)), // pEntryPoint
             mDefaultIncludeHandler.Get(),
             IID_PPV_ARGS(&result)
         ));

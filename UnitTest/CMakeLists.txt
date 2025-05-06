@@ -1,29 +1,17 @@
-cmake_minimum_required( VERSION 3.5 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.10)
 
-project(Test LANGUAGES CXX)
-
-
-set(GTEST_LIB gtest gtest_main)
+Set(TARGET_NAME UnitTest)
 set(ENGINE_LIB MEngine)
 
-
-Set(TestCase
+Set(SOURCES
 Source/MemoryAllocatorTest.cpp
 Source/ThreadPoolTest.cpp
+Source/Main.cpp
 )
 
-add_executable(Test ${TestCase})
+add_executable(${TARGET_NAME} ${SOURCES})
 
-target_include_directories(Test
-    PRIVATE
-    ${CMAKE_SOURCE_DIR}/Vendor/googletest-1.14.0/googletest/include
-    ${CMAKE_SOURCE_DIR}/Engine/Include
-)
-
-target_link_libraries(Test ${ENGINE_LIB} ${GTEST_LIB})
-target_link_directories(Test PRIVATE ${CMAKE_SOURCE_DIR}/Vendor/googletest-1.14.0/lib)
-
-set_target_properties(Test PROPERTIES
+set_target_properties(${TARGET_NAME} PROPERTIES
     CXX_STANDARD 20
     CXX_EXTENSIONS OFF
     CXX_STANDARD_REQUIRED ON
@@ -31,4 +19,13 @@ set_target_properties(Test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Binary
 )
 
-add_test(NAME Test COMMAND Test)
+# link to engine lib
+target_link_libraries(${TARGET_NAME} PRIVATE ${ENGINE_LIB})
+
+# link to gtest
+enable_testing()
+
+find_package(GTest CONFIG REQUIRED)
+target_link_libraries(${TARGET_NAME} PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+
+add_test(Name ${TARGET_NAME} Command ${TARGET_NAME})

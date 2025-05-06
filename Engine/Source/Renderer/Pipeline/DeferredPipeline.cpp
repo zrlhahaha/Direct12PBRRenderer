@@ -31,8 +31,8 @@ namespace MRenderer
     {
         static MeshData mesh = DefaultResource::StandardSphereMesh();
 
-        mBoxIndexBuffer = GD3D12Device->CreateIndexBuffer(mesh.IndiciesData(), mesh.IndiciesCount() * sizeof(IndexType));
-        mBoxVertexBuffer = GD3D12Device->CreateVertexBuffer(mesh.VerticesData(), mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>), sizeof(Vertex<SkyBoxMeshFormat>));
+        mBoxIndexBuffer = GD3D12Device->CreateIndexBuffer(mesh.IndiciesData(), static_cast<uint32>(mesh.IndiciesCount() * sizeof(IndexType)));
+        mBoxVertexBuffer = GD3D12Device->CreateVertexBuffer(mesh.VerticesData(), static_cast<uint32>(mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>)), sizeof(Vertex<SkyBoxMeshFormat>));
     }
 
     void SkyboxPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)

@@ -48,12 +48,12 @@ namespace MRenderer
                 ASSERT(size < (sizeof(mMask) * CHAR_BIT)); // support up to 16 descriptor for now
             }
 
-            inline void StageDescriptor(ID3D12Device* device, uint32 index, const CPUDescriptor* cpu_descriptor, size_t size)
+            inline void StageDescriptor(ID3D12Device* device, uint32 index, const CPUDescriptor* cpu_descriptor, uint32 size)
             {
                 ASSERT(index + size <= mSize);
                 ASSERT(!mStart.Empty());
 
-                for (size_t i = 0; i < size; i++)
+                for (uint32 i = 0; i < size; i++)
                 {
                     ASSERT(!(mMask & (1 << (index + i)))); // break when reassigning descriptor on the same slot
                     mMask = mMask | (1 << (index + i));
@@ -117,19 +117,19 @@ namespace MRenderer
             }
         }
 
-        void StageSRV(uint32 index, const CPUDescriptor* cpu_descriptor, size_t size = 1)
+        void StageSRV(uint32 index, const CPUDescriptor* cpu_descriptor, uint32 size = 1)
         {
             ASSERT(cpu_descriptor->HeapType() == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             mSRVs.StageDescriptor(GD3D12RawDevice, index, cpu_descriptor, size);
         }
 
-        void StageUAV(uint32 index, const CPUDescriptor* cpu_descriptor, size_t size = 1) 
+        void StageUAV(uint32 index, const CPUDescriptor* cpu_descriptor, uint32 size = 1)
         {
             ASSERT(cpu_descriptor->HeapType() == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             mUAVs.StageDescriptor(GD3D12RawDevice, index, cpu_descriptor, size);
         }
 
-        void StageSampler(uint32 index, const CPUDescriptor* cpu_descriptor, size_t size = 1)
+        void StageSampler(uint32 index, const CPUDescriptor* cpu_descriptor, uint32 size = 1)
         {
             ASSERT(cpu_descriptor->HeapType() == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
             mSamplers.StageDescriptor(GD3D12RawDevice, index, cpu_descriptor, size);

@@ -54,18 +54,18 @@ namespace MRenderer
         UploadBufferPool(const UploadBufferPool&) = delete;
         UploadBufferPool& operator=(const UploadBufferPool&) = delete;;
 
-        UploadBuffer Allocate(ID3D12Device* device, size_t size);
+        UploadBuffer Allocate(ID3D12Device* device, uint32 size);
         void CleanUp();
 
     protected:
-        UploadBuffer AllocateSmallBuffer(ID3D12Device* device, size_t size);
-        UploadBuffer AllocateLargeBuffer(ID3D12Device* device, size_t size);
+        UploadBuffer AllocateSmallBuffer(ID3D12Device* device, uint32 size);
+        UploadBuffer AllocateLargeBuffer(ID3D12Device* device, uint32 size);
 
     protected:
         std::vector<Page> mPages;
-        std::unordered_map<size_t, LargePageContainer> mLargePages;
-        size_t mPageIndex = 0;
-        size_t mOffset = 0;
+        std::unordered_map<uint32, LargePageContainer> mLargePages;
+        uint32 mPageIndex = 0;
+        uint32 mOffset = 0;
     };
 
 
@@ -76,7 +76,7 @@ namespace MRenderer
         UploadBufferAllocator(const UploadBufferAllocator&) = delete;
         UploadBufferAllocator& operator=(const UploadBufferAllocator&) = delete;
 
-        UploadBuffer Allocate(size_t size);
+        UploadBuffer Allocate(uint32 size);
         void NextFrame();
 
     protected:
@@ -114,91 +114,97 @@ namespace MRenderer
         EMemoryAllocationType_Commited,
     };
 
-
-    struct MemoryAllocation;
-    // This class uses a TLSF memory pool to manage a section of GPU memory.
-    // The TLSFMeta is only for bookkeeping, The actual memory resides in the GPU memory that the ID3D12Heap represents.
-    class MemoryAllocator 
+    namespace D3D12Memory
     {
-    public:
-        static constexpr D3D12_HEAP_TYPE HeapType[] = { D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_HEAP_TYPE_READBACK};
-        static constexpr uint32 HeapTypeTotal = std::size(HeapType);
+        class MemoryAllocator;
 
-        static constexpr uint32 HeapCount = EHeapUsage_TotalUsage * HeapTypeTotal; // each heap usage has three kind of heap, default, upload and readback
-        static constexpr uint32 HeapSize = 64 * 1024 * 1024; // 64mb
-        static constexpr uint32 MaxAllocationSize = 2048 * 2048 * 32; // maximum allocation is the size of a 2048*2048 rgba texture
-        static constexpr uint32 MinAllocationSize = 256; // minimum allocation is the size of a samllest const buffer
+        constexpr D3D12_HEAP_TYPE HeapType[] = { D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_HEAP_TYPE_READBACK };
+        constexpr uint32 HeapTypeTotal = static_cast<uint32>(std::size(HeapType));
+
+        constexpr uint32 HeapCount = EHeapUsage_TotalUsage * HeapTypeTotal; // each heap usage has three kind of heap, default, upload and readback
+        constexpr uint32 HeapSize = 64 * 1024 * 1024; // 64mb
+        constexpr uint32 MaxAllocationSize = 2048 * 2048 * 32; // maximum allocation is the size of a 2048*2048 rgba texture
+        constexpr uint32 MinAllocationSize = 256; // minimum allocation is the size of a samllest const buffer
 
         // max min size needs to be the power of 2
-        static_assert((MaxAllocationSize & (MaxAllocationSize - 1)) == 0);
-        static_assert((MinAllocationSize & (MinAllocationSize - 1)) == 0);
+        static_assert((MaxAllocationSize& (MaxAllocationSize - 1)) == 0);
+        static_assert((MinAllocationSize& (MinAllocationSize - 1)) == 0);
 
         using MetaAllocator = TLSFMeta<MinAllocationSize, FLS(MaxAllocationSize)>;
         using MetaAllocation = MetaAllocator::Allocation;
-    public:
-        MemoryAllocator(ID3D12Device* device);
-        ~MemoryAllocator();
-        MemoryAllocator(const MemoryAllocator&) = delete;
-        MemoryAllocator& operator=(const MemoryAllocator&) = delete;
 
-        MemoryAllocation* Allocate(AllocationDesc desc, bool placed=true);
-        void Free(MemoryAllocation* allocation);
-        D3D12_RESOURCE_ALLOCATION_INFO QueryResourceSizeAndAlignment(D3D12_RESOURCE_DESC& desc);
-
-    protected:
-        MemoryAllocation* AllocateCommitedResouce(const AllocationDesc& desc);
-        MemoryAllocation* AllocatePlacedResource(const AllocationDesc& desc, size_t size, size_t alignment);
-        void FreeCommitedResource(MemoryAllocation* allocation);
-        void FreePlacedResource(MemoryAllocation* allocation);
-
-        inline static uint32 HeapIndex(EHeapUsage heap_usage, D3D12_HEAP_TYPE heap_type) 
+        struct MemoryAllocation
         {
-            return heap_usage * HeapTypeTotal + heap_type - D3D12_HEAP_TYPE_DEFAULT;
-        }
-
-    protected:
-        MetaAllocator mMeta[HeapCount];
-        ComPtr<ID3D12Heap> mHeap[HeapCount];
-        NestedObjectAllocator<MemoryAllocation> mAllocationAllocator;
-        ID3D12Device* mDevice;
-    };
-
-    struct MemoryAllocation
-    {
-        friend class HeapAllocator;
-        friend class MemoryAllocator;
-    private:
-        union
-        {
-            struct PlacedAllocation
+            friend class HeapAllocator;
+            friend class MemoryAllocator;
+        private:
+            union
             {
-                ID3D12Resource* resource = nullptr;
-                MemoryAllocator::MetaAllocation* meta_allocation = nullptr;
-                uint32 heap_index;
-            } placed_allocation;
+                struct PlacedAllocation
+                {
+                    ID3D12Resource* resource = nullptr;
+                    MetaAllocation* meta_allocation = nullptr;
+                    uint32 heap_index;
+                } placed_allocation;
 
-            struct CommitedAllocation
+                struct CommitedAllocation
+                {
+                    ID3D12Resource* resource = nullptr;
+                } commited_allocation;
+
+                ID3D12Resource* resource = nullptr;
+            } data;
+
+            EMemoryAllocationType type;
+            MemoryAllocator* source;
+
+        public:
+            ID3D12Resource* Resource() const
             {
-                ID3D12Resource* resource = nullptr;
-            } commited_allocation;
+                return data.resource;
+            }
 
-            ID3D12Resource* resource = nullptr;
-        } data;
+            MemoryAllocator* Allocator() const
+            {
+                return source;
+            }
+        };
 
-        EMemoryAllocationType type;
-        MemoryAllocator* source;
-
-    public:
-        ID3D12Resource* Resource() const
+        // This class uses a TLSF memory pool to manage a section of GPU memory.
+        // The TLSFMeta is only for bookkeeping, The actual memory resides in the GPU memory that the ID3D12Heap represents.
+        class MemoryAllocator
         {
-            return data.resource;
-        }
+        public:
+            MemoryAllocator(ID3D12Device* device);
+            ~MemoryAllocator();
+            MemoryAllocator(const MemoryAllocator&) = delete;
+            MemoryAllocator& operator=(const MemoryAllocator&) = delete;
 
-        MemoryAllocator* Allocator() const 
-        {
-            return source;
-        }
-    };
+            MemoryAllocation* Allocate(AllocationDesc desc, bool placed = true);
+            void Free(MemoryAllocation* allocation);
+            D3D12_RESOURCE_ALLOCATION_INFO QueryResourceSizeAndAlignment(D3D12_RESOURCE_DESC& desc);
+
+        protected:
+            MemoryAllocation* AllocateCommitedResouce(const AllocationDesc& desc);
+            MemoryAllocation* AllocatePlacedResource(const AllocationDesc& desc, uint32 size, uint32 alignment);
+            void FreeCommitedResource(MemoryAllocation* allocation);
+            void FreePlacedResource(MemoryAllocation* allocation);
+
+            inline static uint32 HeapIndex(EHeapUsage heap_usage, D3D12_HEAP_TYPE heap_type)
+            {
+                return heap_usage * HeapTypeTotal + heap_type - D3D12_HEAP_TYPE_DEFAULT;
+            }
+
+        protected:
+            MetaAllocator mMeta[HeapCount];
+            ComPtr<ID3D12Heap> mHeap[HeapCount];
+            NestedObjectAllocator<MemoryAllocation> mAllocationAllocator;
+            ID3D12Device* mDevice;
+        };
+    }
+
+    using D3D12Memory::MemoryAllocation;
+    using D3D12Memory::MemoryAllocator;
 }
 
 

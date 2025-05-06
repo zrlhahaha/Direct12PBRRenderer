@@ -1,0 +1,28 @@
+{
+    "version": 3,
+    "configurePresets": [
+      {
+        // configure vcpkg and clang-cl for cmake"
+        // ref: https://learn.microsoft.com/en-us/vcpkg/get_started/get-started?pivots=shell-powershell",
+        // ref: https://learn.microsoft.com/en-us/cpp/build/cmake-presets-vs?view=msvc-170"
+
+        "name": "windows",
+        "generator": "Visual Studio 17 2022",
+        "binaryDir": "${sourceDir}/build/${presetName}",
+        "cacheVariables": {
+            "CMAKE_BUILD_TYPE": "Debug",
+            "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}\\scripts\\buildsystems\\vcpkg.cmake",
+
+            //"CMAKE_GENERATOR_TOOLSET": "ClangCL",
+            //"CMAKE_C_COMPILER": "clang-cl.exe",
+            //"CMAKE_CXX_COMPILER": "clang-cl.exe",
+            "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+        },
+        "vendor": {
+            "microsoft.com/VisualStudioSettings/CMake/1.0": {
+            "intelliSenseMode": "windows-clang-x64"
+            }
+        }
+      }
+    ]
+  }

@@ -58,7 +58,8 @@ namespace MRenderer
     template<typename T, typename U>
     uint32 MemberAddressOffset(T U::* member_ptr)
     {
-        return reinterpret_cast<uintptr_t>(&((U*)(nullptr)->*member_ptr)) - reinterpret_cast<uintptr_t>(nullptr);
+        std::uintptr_t offset = reinterpret_cast<std::uintptr_t>(&((U*)(nullptr)->*member_ptr)) - reinterpret_cast<std::uintptr_t>(nullptr);
+        return static_cast<uint32>(offset);
     }
 
     template<typename Type, template<typename...> typename Template>

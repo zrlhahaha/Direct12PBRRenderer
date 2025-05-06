@@ -1,7 +1,6 @@
 #include "Resource/ResourceLoader.h"
 #include "Fundation.h"
 #include "DirectXTex.h"
-#include "Resource/ResourceLoader.h"
 #include "Resource/tiny_obj_loader.h"
 
 #include <numeric>
@@ -117,18 +116,19 @@ namespace MRenderer
         uint32 index_begin = 0;
         for (auto& mesh : meshes) 
         {
-            sub_meshes.push_back(SubMeshData{.Index = index_begin, .IndicesCount = static_cast<uint32>(mesh.size())});
-            index_begin += mesh.size();
+            uint32 num_mesh_vertex = static_cast<uint32>(mesh.size());
+            sub_meshes.push_back(SubMeshData{.Index = index_begin, .IndicesCount = num_mesh_vertex });
+            index_begin += num_mesh_vertex;
 
             vertices.insert(vertices.end(), mesh.begin(), mesh.end());
         }
 
         // make the model vertex near to the origin
-        center = center / vertices.size();
+        center = center / static_cast<float>(vertices.size());
         for (auto& vertex : vertices)
         {
             vertex.Position = vertex.Position - center;
-            vertex.Position = vertex.Position * 0.01;
+            vertex.Position = vertex.Position * 0.01F;
 
             // calculate the bound on the fly
             bound.Min = Vector3::Min(bound.Min, vertex.Position);
@@ -239,7 +239,7 @@ namespace MRenderer
         ThrowIfFailed(DirectX::LoadFromWICFile(ToWString(local_path).data(), WIC_FLAGS_NONE, nullptr, container));
 
         const Image * image = container.GetImage(0, 0, 0);
-        uint32 size = image->width * image->height * DirectX::BitsPerPixel(image->format) / CHAR_BIT;
+        uint32 size = static_cast<uint32>(image->width * image->height * DirectX::BitsPerPixel(image->format) / CHAR_BIT);
 
         if ((image->width % 4) != 0 || (image->height % 4) != 0) 
         {
@@ -249,8 +249,8 @@ namespace MRenderer
 
         return TextureData(
             BinaryData(image->pixels, size),
-            image->width,
-            image->height,
+            static_cast<uint32>(image->width),
+            static_cast<uint32>(image->height),
             static_cast<ETextureFormat>(image->format)
         );
     }

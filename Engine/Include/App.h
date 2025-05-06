@@ -53,7 +53,7 @@ namespace MRenderer
     protected:
         struct Status
         {
-            size_t FrameCount = 0;
+            uint32 FrameCount = 0;
             double TimeElapsed = 0;
         } mPerfromRecord;
 
@@ -78,8 +78,8 @@ namespace MRenderer
         Input mInput;
 
         std::string mMainWndCaption = "MRenderer";
-        int mClientWidth = 800;
-        int mClientHeight = 600;
+        uint32 mClientWidth = 800;
+        uint32 mClientHeight = 600;
 
         std::unique_ptr<Camera> mCamera;
         std::unique_ptr<RenderScheduler> mRenderScheduler;

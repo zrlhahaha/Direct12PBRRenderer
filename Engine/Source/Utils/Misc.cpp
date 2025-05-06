@@ -19,7 +19,7 @@ namespace MRenderer
 
         for (uint32 i = 0; i < StringLength; i++)
         {
-            if ((1 << i) & BitMask)
+            if ((1ULL << i) & BitMask)
                 continue;
 
             m[i] = str[i];
@@ -43,7 +43,7 @@ namespace MRenderer
         std::string str;
         for (uint32 i = 0; i < StringLength; i++)
         {
-            if ((1 << i) & BitMask)
+            if ((1ULL << i) & BitMask)
             {
                 str += "-";
             }

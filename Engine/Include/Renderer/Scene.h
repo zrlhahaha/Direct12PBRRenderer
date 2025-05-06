@@ -162,8 +162,8 @@ namespace MRenderer
         Scene();
         Scene(std::string_view repo_path);
         
-        inline uint32 GetModelCount() const { return mSceneModel.size(); }
-        inline uint32 GetLightCount() const { return mSceneLight.size(); }
+        inline uint32 GetModelCount() const { return static_cast<uint32>(mSceneModel.size()); }
+        inline uint32 GetLightCount() const { return static_cast<uint32>(mSceneLight.size()); }
 
         template<typename... Args>
         SceneModel* AddSceneModel(std::string_view name, Args&&... args)

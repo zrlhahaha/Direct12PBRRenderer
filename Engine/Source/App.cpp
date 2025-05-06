@@ -74,10 +74,6 @@ namespace MRenderer
         // Do the initial resize code.
         OnResize();
 
-        // to change from ./build/SceneTest/Test to ./SceneTest/Test, so the resource file can be loaded properly
-        auto path =  std::filesystem::current_path() / "../../../SceneTest/Test";
-        std::filesystem::current_path(path);
-
         std::cout << "Current Working Path: " << std::filesystem::current_path() << std::endl;
 
         PlateformInitialize();
@@ -87,7 +83,7 @@ namespace MRenderer
 
         mScene = ResourceLoader::Instance().LoadResource<Scene>("Asset/Scene/main.json");
 
-        mCamera = std::make_unique<Camera>(0.4 * PI, mClientWidth, mClientHeight, 0.1, 1000);
+        mCamera = std::make_unique<Camera>(0.4F * PI, mClientWidth, mClientHeight, 0.1F, 1000.0F);
         mCamera->Move(Vector3(0, 0, -5));
 
         mRenderPipeline = std::make_unique<DeferredRenderPipeline>();
@@ -107,7 +103,7 @@ namespace MRenderer
     {
         if (mInput.IsKeyDown(InputKey_RMouseButton)) 
         {
-            Vector2 dt = mInput.MouseDeltaPosition() * 0.1;
+            Vector2 dt = mInput.MouseDeltaPosition() * 0.1F;
             mCamera->Rotate(0, dt.x * Deg2Rad, dt.y * Deg2Rad);
         }
 
@@ -129,7 +125,7 @@ namespace MRenderer
             delta_pos.x += 1;
         }
 
-        delta_pos = mCamera->GetWorldMatrix() * Vector4(delta_pos * 0.05, 0);
+        delta_pos = mCamera->GetWorldMatrix() * Vector4(delta_pos * 0.05F, 0);
         mCamera->Move(delta_pos);
     }
 
@@ -286,7 +282,7 @@ namespace MRenderer
 
 
         // Compute window rectangle dimensions based on requested client area dimensions.
-        RECT R = { 0, 0, mClientWidth, mClientHeight };
+        RECT R = { 0, 0, static_cast<LONG>(mClientWidth), static_cast<LONG>(mClientHeight) };
         AdjustWindowRect(&R, WS_OVERLAPPEDWINDOW, false);
         int width = R.right - R.left;
         int height = R.bottom - R.top;
@@ -338,7 +334,7 @@ namespace MRenderer
 
                 if (!paused)
                 {
-                    if ((mTimer.TotalTime() - mRenderTimeStamp) > (1.0 / 60.0))
+                    if ((mTimer.TotalTime() - mRenderTimeStamp) > (1.0F / 60.0F))
                     {
                         mRenderTimeStamp = mTimer.TotalTime();
 
@@ -376,7 +372,7 @@ namespace MRenderer
         const float UpdateInterval = 0.1f;
         if ((mTimer.TotalTime() - mPerfromRecord.TimeElapsed) >= UpdateInterval)
         {
-            size_t fps = mPerfromRecord.FrameCount / UpdateInterval;
+            uint32 fps = static_cast<uint32>(mPerfromRecord.FrameCount / UpdateInterval);
             float mspf = 1000.0f / fps;
 
             std::string windowText = mMainWndCaption +

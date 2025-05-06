@@ -30,7 +30,7 @@ namespace MRenderer
             return static_cast<uint32>(mTasks.size());
         };
 
-        // schedule function for later execution， @args will be passed by copy or move operation, use std::ref if you want to pass by reference
+        // schedule function for later execution, @args will be passed by copy or move operation, use std::ref if you want to pass by reference
         template<typename Fn, typename... Args>
         auto Schedule(Fn func, Args&&... args)
         {

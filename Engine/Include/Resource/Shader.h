@@ -96,7 +96,7 @@ namespace MRenderer
         {
             mShaderReflection->GetDesc(&mShaderDesc);
 
-            for (size_t i = 0, cbuffer_index = 0; i < mShaderDesc.BoundResources; i++)
+            for (uint32 i = 0, cbuffer_index = 0; i < mShaderDesc.BoundResources; i++)
             {
                 D3D12_SHADER_INPUT_BIND_DESC desc;
                 mShaderReflection->GetResourceBindingDesc(i, &desc);
@@ -129,17 +129,17 @@ namespace MRenderer
             ASSERT(mConstantBufferAttr.size() <= ShaderResourceMaxTexture);
         }
 
-        inline uint32 GetTextureCount() const
+        inline size_t GetTextureCount() const
         {
             return mTextureAttr.size();
         }
 
-        inline uint32 GetSamplerCount() const
+        inline size_t GetSamplerCount() const
         {
             return mSamplerAttr.size();
         }
 
-        inline uint32 GetConstantBufferCount() const
+        inline size_t GetConstantBufferCount() const
         {
             return mConstantBufferAttr.size();
         }

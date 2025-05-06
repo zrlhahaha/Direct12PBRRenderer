@@ -41,7 +41,7 @@ namespace MRenderer
     DeviceTexture2DArray::DeviceTexture2DArray(D3D12Resource resource, uint32 mip_size)
         :DeviceTexture(std::move(resource)), mUnorderedAccessViewArray(mip_size), mMipSize(mip_size)
     {
-        mSliceSize = mWidth * mHeight * DirectX::BitsPerPixel(static_cast<DXGI_FORMAT>(Format())) / CHAR_BIT;
+        mSliceSize = static_cast<uint32>(mWidth * mHeight * DirectX::BitsPerPixel(static_cast<DXGI_FORMAT>(Format())) / CHAR_BIT);
     }
 
     void DeviceTexture2DArray::UpdateArraySlice(uint32 index, const void* data, uint32 size)

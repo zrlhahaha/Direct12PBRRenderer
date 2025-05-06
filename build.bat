@@ -1,3 +1,3 @@
 chcp 65001
-cmake --presets=windows
+cmake --preset=windows
 pause

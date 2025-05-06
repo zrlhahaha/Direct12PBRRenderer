@@ -89,7 +89,7 @@ namespace MRenderer
 
     uint32 TextureData::PixelSize() const
     {
-        return DirectX::BitsPerPixel(static_cast<DXGI_FORMAT>(mInfo.Format)) / CHAR_BIT;
+        return static_cast<uint32>(DirectX::BitsPerPixel(static_cast<DXGI_FORMAT>(mInfo.Format)) / CHAR_BIT);
     }
 
     Vector4 TextureData::Sample(float u, float v) const
@@ -157,15 +157,17 @@ namespace MRenderer
         );
 
         BinarySerialization::Serialize(rb, texture_data.mInfo);
-        rb.Write<uint32>(compressed.GetPixelsSize());
-        rb.Write(compressed.GetPixels(), compressed.GetPixelsSize());
+
+        uint32 compressed_size = static_cast<uint32>(compressed.GetPixelsSize());
+        rb.Write<uint32>(compressed_size);
+        rb.Write(compressed.GetPixels(), compressed_size);
     }
 
     void TextureData::Deserialize(RingBuffer& rb, TextureData& out_texture_data)
     {
         BinarySerialization::Deserialize(rb, out_texture_data.mInfo);
-        uint32 buffer_size = rb.Read<uint32>();
-        const void* buffer = rb.Read(buffer_size);
+        uint32 compressed_size = rb.Read<uint32>();
+        const void* pixels = rb.Read(compressed_size);
 
         DirectX::ScratchImage compressed;
         ThrowIfFailed(
@@ -178,7 +180,7 @@ namespace MRenderer
             )
         );
 
-        memcpy(compressed.GetPixels(), buffer, buffer_size);
+        memcpy(compressed.GetPixels(), pixels, compressed_size);
 
         DirectX::ScratchImage raw_image;
         ThrowIfFailed(
@@ -192,7 +194,7 @@ namespace MRenderer
         );
 
         const DirectX::Image* image_slice = raw_image.GetImage(0, 0, 0);
-        out_texture_data.mData = BinaryData(image_slice->pixels, image_slice->slicePitch);
+        out_texture_data.mData = BinaryData(image_slice->pixels, static_cast<uint32>(image_slice->slicePitch));
     }
 
     // theta: angle between y-axis phi: angle between x-axis

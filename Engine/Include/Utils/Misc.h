@@ -96,7 +96,7 @@ namespace MRenderer
     std::string ToString(const std::wstring_view& str);
     std::wstring ToWString(const std::string_view& str);
     
-    inline uint32_t AlignUp(uint32_t size, uint32_t alignment)
+    inline uint32 AlignUp(uint32 size, uint32 alignment)
     {
         return (size + alignment - 1) & ~(alignment - 1);
     }

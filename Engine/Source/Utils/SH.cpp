@@ -91,7 +91,7 @@ namespace MRenderer
 
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<> rng(0.0, 1.0);
+        std::uniform_real_distribution<float> rng(0.0F, 1.0F);
 
         // project RGB channels to SH basis functions
         const uint32 ChannelCount = 3;
@@ -143,9 +143,9 @@ namespace MRenderer
             // see ref for more details
             // ref: https://zhuanlan.zhihu.com/p/144910975 Eq.4
             // ref: https://cseweb.ucsd.edu/~ravir/papers/invlamb/josa.pdf Eq.24
-            for (uint32 l = 0; l <= SH2Coefficients::SHOrder; l++)
+            for (int l = 0; l <= SH2Coefficients::SHOrder; l++)
             {
-                for (uint32 m = -l; m <= l; m++)
+                for (int m = -l; m <= l; m++)
                 {
                     uint32 n = l * l + m + l;
 

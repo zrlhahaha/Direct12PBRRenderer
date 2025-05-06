@@ -22,7 +22,7 @@ namespace MRenderer
           mWidth(width), mHeight(height), mResourceInitialized(false)
     {
 #ifndef NDebug
-        //ComPtr, &会释放掉引用, getaddressof不会
+        //ComPtr, & operator will release the reference, getaddressof won't
         // debug controller
         ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&mDebugController)));
         mDebugController->EnableDebugLayer();
@@ -82,7 +82,7 @@ namespace MRenderer
         mBackBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
         mFrameIndex = 0;
 
-        for (size_t i = 0; i < FrameResourceCount; i++)
+        for (uint32 i = 0; i < FrameResourceCount; i++)
         {
             // collect back buffer
             ID3D12Resource* render_target;
@@ -316,11 +316,11 @@ namespace MRenderer
         // upload initial_data to gpu if it's provided
         if (initial_data) 
         {
-            uint32 pixel_size = DirectX::BitsPerPixel(dxgi_format) / CHAR_BIT;
+            uint32 pixel_size = static_cast<uint32>(DirectX::BitsPerPixel(dxgi_format) / CHAR_BIT);
 
             // allocate upload buffer
             size_t intermediate_size = GetRequiredIntermediateSize(allocation->Resource(), 0, 1);
-            UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(intermediate_size);
+            UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
         
             D3D12_SUBRESOURCE_DATA resource{
                 .pData = initial_data,
@@ -656,7 +656,7 @@ namespace MRenderer
 
         // allocate upload buffer
         size_t intermediate_size = GetRequiredIntermediateSize(array->Resource()->Resource(), 0, 1);
-        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(intermediate_size);
+        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
 
         D3D12_SUBRESOURCE_DATA resource{
             .pData = data,
@@ -785,7 +785,7 @@ namespace MRenderer
         sampler_table.DescriptorTable.pDescriptorRanges = &sampler_range;
         
         CD3DX12_ROOT_SIGNATURE_DESC desc;
-        desc.Init(root_parameters.size(), root_parameters.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        desc.Init(static_cast<uint32>(root_parameters.size()), root_parameters.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         ComPtr<ID3DBlob> blob;
         ComPtr<ID3DBlob> error_blob;

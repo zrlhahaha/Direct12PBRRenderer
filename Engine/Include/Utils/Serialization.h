@@ -557,7 +557,7 @@ namespace MRenderer
             std::vector<uint8> buffer(file_size);
             in.read(reinterpret_cast<char*>(buffer.data()), file_size);
 
-            mBuffer.Write(buffer.data(), file_size);
+            mBuffer.Write(buffer.data(), static_cast<uint32>(file_size));
             return true;
         }
 

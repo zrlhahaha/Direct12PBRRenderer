@@ -26,7 +26,7 @@ namespace MRenderer
                 .InvProjection = camera->GetProjectionMatrix().Inverse(),
                 .CameraPos = camera->GetTranslation(),
                 .Ratio = camera->Ratio(),
-                .Resolution = Vector2(GD3D12Device->Width(), GD3D12Device->Height()),
+                .Resolution = Vector2(static_cast<float>(GD3D12Device->Width()), static_cast<float>(GD3D12Device->Height())),
                 .Near = camera->Near(),
                 .Far = camera->Far(),
                 .Fov = camera->Fov(),

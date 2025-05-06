@@ -69,7 +69,7 @@ namespace MRenderer
         }
 
         // fow our own resource allocation, @D3D12Resource will manage it's life cycle by RAII
-        D3D12Resource(MemoryAllocation* allocation, D3D12_RESOURCE_STATES state, uint8* mapped = nullptr)
+        D3D12Resource(D3D12Memory::MemoryAllocation* allocation, D3D12_RESOURCE_STATES state, uint8* mapped = nullptr)
             :mAllocation(allocation), mResource(allocation->Resource()), mResourceState(state), mMapped(mapped)
         {
         }
@@ -257,8 +257,8 @@ namespace MRenderer
         {
             const auto& desc = mTextureResource.Resource()->GetDesc();
 
-            mWidth = desc.Width;
-            mHeight = desc.Height;
+            mWidth = static_cast<uint32>(desc.Width);
+            mHeight = static_cast<uint32>(desc.Height);
             mTextureFormat = static_cast<ETextureFormat>(desc.Format);
         }
         DeviceTexture(DeviceTexture&& other) = default;

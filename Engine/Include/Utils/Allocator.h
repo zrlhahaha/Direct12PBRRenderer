@@ -74,7 +74,6 @@ namespace MRenderer
             friend class NestedObjectAllocator;
         public:
             static constexpr uint32 Stride = sizeof(Block);
-            inline static const Iterator End = Iterator(nullptr, -1, -1);
 
         protected:
             Iterator(NestedObjectAllocator* allocator, uint32 chunk_index, uint32 element_index):
@@ -107,7 +106,7 @@ namespace MRenderer
                     ElementIndex = 0;
                 }
 
-                *this = End;
+                *this = End();
                 return *this;
             }
 
@@ -118,13 +117,19 @@ namespace MRenderer
 
             T& operator*()
             {
-                ASSERT(*this != End);
+                ASSERT(*this != End());
                 ASSERT(ChunkIndex < Allocator->mChunks.size() && ElementIndex < Allocator->mChunks[ChunkIndex].Capacity);
                 
                 Block* block = Allocator->mChunks[ChunkIndex].Begin + ElementIndex;
 
                 ASSERT(block->IsOccupied());
                 return (Allocator->mChunks[ChunkIndex].Begin + ElementIndex)->Data;
+            }
+
+        public:
+            static Iterator End()
+            {
+                return Iterator(nullptr, -1, -1);
             }
 
         private:
@@ -263,7 +268,7 @@ namespace MRenderer
         {
             if (mChunks.empty()) 
             {
-                return Iterator::End;
+                return Iterator::End();
             }
             else 
             {
@@ -282,7 +287,7 @@ namespace MRenderer
 
         Iterator end()
         {
-            return Iterator::End;
+            return Iterator::End();
         }
 
         // check if @obj belongs to this allocator

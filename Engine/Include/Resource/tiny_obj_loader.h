@@ -654,8 +654,6 @@ bool ParseTextureNameAndOption(std::string *texname, texture_option_t *texopt,
 
 #endif  // TINY_OBJ_LOADER_H_
 
-#define TINYOBJLOADER_IMPLEMENTATION
-
 #ifdef TINYOBJLOADER_IMPLEMENTATION
 #include <cassert>
 #include <cctype>

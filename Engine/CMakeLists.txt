@@ -1,16 +1,17 @@
-cmake_minimum_required( VERSION 3.5 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.10)
 
 # set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_BINARY_DIR}/Binary/Release)
 # set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_BINARY_DIR}/Binary/Debug)
 
 set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Include)
+set(TARGET_NAME MEngine)
 
 message(${CMAKE_CXX_COMPILER})
 
-add_library(MEngine STATIC)
+add_library(${TARGET_NAME} STATIC)
 
-set(SOUCRCE_FILES
+set(SOURCE_FILES
     ${SOURCE_DIR}/App.cpp
     ${SOURCE_DIR}/Plateform/Windows/WindowsUtils.cpp
     ${SOURCE_DIR}/Plateform/Windows/Input.cpp
@@ -81,49 +82,42 @@ set(HEADER_FILES
     ${INCLUDE_DIR}/Resource/json.hpp
 )
 
-
-target_sources(MEngine
+target_sources(${TARGET_NAME}
     PRIVATE
-    ${SOUCRCE_FILES}
+    ${SOURCE_FILES}
     PUBLIC
     ${HEADER_FILES}
 )
 
 # generate visual studio folder
-source_group(TREE ${SOURCE_DIR} PREFIX "Source Files" FILES ${SOUCRCE_FILES})
+source_group(TREE ${SOURCE_DIR} PREFIX "Source Files" FILES ${SOURCE_FILES})
 source_group(TREE ${INCLUDE_DIR} PREFIX "Header Files" FILES ${HEADER_FILES})
 
 
-set_target_properties(MEngine PROPERTIES
+set_target_properties(${TARGET_NAME} PROPERTIES
 CXX_STANDARD 20
 CXX_EXTENSIONS OFF
 CXX_STANDARD_REQUIRED ON
-
-ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Binary
 )
 
-target_include_directories(MEngine
-    PUBLIC 
-    ${CMAKE_CURRENT_SOURCE_DIR}/Include
-    #PRIVATE
-    ${VENDOR_DIR}/DirectXShaderCompiler/inc
-    ${VENDOR_DIR}/DirectXTex/DirectXTex
+# include vendor directory
+target_include_directories(${TARGET_NAME}
+# expose the include directory to the project linking this library
+    PUBLIC
     ${VENDOR_DIR}/cmdline
+    ${CMAKE_CURRENT_SOURCE_DIR}/Include
 )
 
-link_directories(${CMAKE_SOURCE_DIR}/Vendor/DirectXShaderCompiler/bin/x64)
-
-set(VENDOR_LIB DirectXTex)
+# link to directxtex, dxc and d3d3 lib files
+# since this is a lib file, all dependencies will be specified as PUBLIC
 set(D3D12_LIB d3dcompiler D3D12 dxguid dxgi ${DXCOMPILER_TARGET})
 
-target_link_libraries(MEngine PUBLIC ${D3D12_LIB})
-target_link_libraries(MEngine PUBLIC ${VENDOR_LIB})
+target_link_libraries(${TARGET_NAME} PUBLIC ${D3D12_LIB})
 
-target_compile_options(MEngine PUBLIC -msse4.1)
+target_compile_options(${TARGET_NAME} PUBLIC -msse4.1)
+
+find_package(directxtex CONFIG REQUIRED)
+target_link_libraries(${TARGET_NAME} PUBLIC Microsoft::DirectXTex)
 
 find_package(directx-dxc CONFIG REQUIRED)
-target_link_libraries(main PRIVATE Microsoft::DirectXShaderCompiler)
-
-find_package(directx-dxc CONFIG REQUIRED)
-target_link_libraries(main PRIVATE Microsoft::DirectXShaderCompiler)
-
+target_link_libraries(${TARGET_NAME} PUBLIC Microsoft::DirectXShaderCompiler)

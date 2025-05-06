@@ -51,14 +51,11 @@ namespace MRenderer
 
     void Input::OnMouseMove(int x, int y)
     {
+        mMousePosition = Vector2(static_cast<float>(x), static_cast<float>(y));
+
         if (mMouseDirty) UNLIKEYLY
         {
-            mLastMousePosition = mMousePosition = Vector2(x, y);
-        }
-        else 
-        {
-            mMousePosition.x = x;
-            mMousePosition.y = y;
+            mLastMousePosition = mMousePosition;;
         }
     }
 

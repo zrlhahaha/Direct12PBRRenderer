@@ -37,7 +37,6 @@ namespace MRenderer
         {
             friend class LooseOctree;
         public:
-            inline static const OctreeElement InvalidID = OctreeElement(-1, nullptr);
 
             template<typename... Args>
             OctreeElement(int node_index, const AABB& bound, Args&&... args)
@@ -175,7 +174,7 @@ namespace MRenderer
 
         void SubDivide(int node_index)
         {
-            int child_index = mNodeTable.size();
+            int child_index = static_cast<int>(mNodeTable.size());
             AABB bound = mNodeTable[node_index].Bound;
             Vector3 center = bound.Center();
             Vector3 half_size = bound.Size() * 0.5f;
@@ -221,7 +220,7 @@ namespace MRenderer
                 };
 
                 Vector3 min = max - half_size;
-                mNodeTable.emplace_back(AABB(min, max), -1, mElementTable.size());
+                mNodeTable.emplace_back(AABB(min, max), -1, static_cast<int>(mElementTable.size()));
                 mElementTable.emplace_back();
             }
 

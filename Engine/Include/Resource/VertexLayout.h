@@ -26,7 +26,7 @@ namespace MRenderer
             { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12 , D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
         };
 
-        static constexpr uint32 NumLayoutElements = std::size(VertexLayout);
+        static constexpr size_t NumLayoutElements = std::size(VertexLayout);
 
         Vector3 Pos;
         Vector2 TexCoord0;
@@ -44,7 +44,7 @@ namespace MRenderer
             { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48 , D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
         };
 
-        static constexpr uint32 NumLayoutElements = std::size(VertexLayout);
+        static constexpr size_t NumLayoutElements = std::size(VertexLayout);
 
         Vector3 Position;
         Vector3 Normal;

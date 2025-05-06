@@ -2,7 +2,6 @@
 #include "Utils\Allocator.h"
 #include <vector>
 
-
 TEST(ObjectPool, AllocationTest) {
     struct TestObj
     {

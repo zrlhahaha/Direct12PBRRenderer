@@ -12,26 +12,26 @@ namespace MRenderer
         {
             LARGE_INTEGER frequency;
             assert(QueryPerformanceFrequency(&frequency));
-            kPerformanceFrequency = 1.0F / frequency.QuadPart;
+            mPerformanceFrequency = 1.0F / frequency.QuadPart;
         }
 
-        double DeltaTime() const
+        float DeltaTime() const
         {
-            return delta_time_;
+            return mDeltaTime;
         }
 
-        double TotalTime() const
+        float TotalTime() const
         {
-            return total_time_;
+            return mTotalTime;
         }
 
         void Pause(bool state)
         {
-            paused_ = state;
+            mPaused = state;
 
             LARGE_INTEGER counter;
             assert(QueryPerformanceCounter(&counter));
-            last_counter_ = counter.QuadPart;
+            mLastCounter = counter.QuadPart;
         }
 
         void Tick()
@@ -40,20 +40,18 @@ namespace MRenderer
             LARGE_INTEGER counter;
             assert(QueryPerformanceCounter(&counter));
 
-            delta_time_ = max((counter.QuadPart - last_counter_) * kPerformanceFrequency, 0);
-            total_time_ += delta_time_;
+            mDeltaTime = max((counter.QuadPart - mLastCounter) * mPerformanceFrequency, 0);
+            mTotalTime += mDeltaTime;
 
-            last_counter_ = counter.QuadPart;
+            mLastCounter = counter.QuadPart;
         }
 
-    public:
-        double kPerformanceFrequency;
-
     private:
-        double delta_time_ = 0.0F;
-        double total_time_ = 0.0F;
+        float mPerformanceFrequency;
+        float mDeltaTime = 0.0F;
+        float mTotalTime = 0.0F;
 
-        INT64 last_counter_ = 0;
-        bool paused_ = false;
+        INT64 mLastCounter = 0;
+        bool mPaused = false;
     };
 }

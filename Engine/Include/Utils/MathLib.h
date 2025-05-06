@@ -6,12 +6,12 @@
 
 namespace MRenderer
 {
-    constexpr float PI = 3.14159265358979323846;
-    constexpr float SqrtPI = 1.7724538509055159;
-    constexpr float InvPI = 1.0 / PI;
-    constexpr float Inv255 = 1.0 / 255.0;
-    constexpr float Rad2Deg = 180.0 / PI;
-    constexpr float Deg2Rad = PI / 180.0;
+    constexpr float PI = 3.14159265358979323846F;
+    constexpr float SqrtPI = 1.7724538509055159F;
+    constexpr float InvPI = 1.0F / PI;
+    constexpr float Inv255 = 1.0F / 255.0F;
+    constexpr float Rad2Deg = 180.0F / PI;
+    constexpr float Deg2Rad = PI / 180.0F;
 
     constexpr float Pow(float base, uint32 n)
     {
@@ -301,8 +301,11 @@ namespace MRenderer
         // since they require input or output to be 16 byte aligned
         static float* StagingBuffer()
         {
-            static thread_local float* staging = new (std::align_val_t(16)) float[4] {};
-            return staging;
+            static thread_local struct alignas(alignof(__m128)) {
+                float m[4];
+            } staging;
+
+            return staging.m;
         }
     };
 
@@ -537,8 +540,12 @@ namespace MRenderer
 
         float* StagingBuffer() const
         {
-            static thread_local float* staging = new (std::align_val_t(16)) float[4];
-            return staging;
+            // 16 bytes aligned staging buffer for load/store __m128
+            static thread_local struct alignas(alignof(__m128)) {
+                float m[4];
+            } staging;
+
+            return staging.m;
         }
     };
 
@@ -865,7 +872,7 @@ namespace MRenderer
             if (det == 0)
                 return ret;
 
-            float inv_det = 1.0 / det;
+            float inv_det = 1.0F / det;
 
             for (i = 0; i < 16; i++)
                 ret.m[i] = inv[i] * inv_det;

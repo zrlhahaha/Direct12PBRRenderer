@@ -231,7 +231,7 @@ namespace MRenderer
         {
         }
 
-        GPUDescriptor Allocate(size_t size = 1)
+        GPUDescriptor Allocate(uint32 size = 1)
         {
             if (!size) 
             {
@@ -324,7 +324,7 @@ namespace MRenderer
         GPUDescriptorAllocator(const GPUDescriptorAllocator&) = delete;
         GPUDescriptorAllocator& operator=(const GPUDescriptorAllocator&) = delete;
 
-        inline GPUDescriptor Allocate(D3D12_DESCRIPTOR_HEAP_TYPE type, size_t count = 1)
+        inline GPUDescriptor Allocate(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32 count = 1)
         {
             ASSERT(type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV || type == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
             return mHeaps[type].Allocate(count);

@@ -118,16 +118,16 @@ namespace MRenderer
         MeshData(EVertexFormat vertex_format, std::vector<VertexType>& vertices, std::vector<uint32>& indices, std::vector<SubMeshData> sub_meshes, const AABB& bound)
             :mVertexFormat(vertex_format), mBound(bound), mSubMeshes(sub_meshes)
         {
-            mVertices = BinaryData(vertices.data(), vertices.size() * sizeof(VertexType));
-            mIndicies = BinaryData(indices.data(), indices.size() * sizeof(uint32));
+            mVertices = BinaryData(vertices.data(), static_cast<uint32>(vertices.size() * sizeof(VertexType)));
+            mIndicies = BinaryData(indices.data(), static_cast<uint32>(indices.size() * sizeof(uint32)));
         }
 
         template<typename VertexType>
         MeshData(EVertexFormat vertex_format, std::vector<VertexType>& vertices, std::vector<uint32>& indices, const AABB& bound)
-            :mVertexFormat(vertex_format), mBound(bound), mSubMeshes{ SubMeshData::Whole(indices.size()) }
+            :mVertexFormat(vertex_format), mBound(bound), mSubMeshes{ SubMeshData::Whole(static_cast<uint32>(indices.size())) }
         {
-            mVertices = BinaryData(vertices.data(), vertices.size() * sizeof(VertexType));
-            mIndicies = BinaryData(indices.data(), indices.size() * sizeof(uint32));
+            mVertices = BinaryData(vertices.data(), static_cast<uint32>(vertices.size() * sizeof(VertexType)));
+            mIndicies = BinaryData(indices.data(), static_cast<uint32>(indices.size() * sizeof(uint32)));
         }
 
         ~MeshData() = default;
@@ -161,7 +161,7 @@ namespace MRenderer
             return mIndicies.GetSize() / sizeof(uint32);
         }
 
-        inline uint32 GetSubMeshCount() const 
+        inline size_t GetSubMeshCount() const
         {
             return mSubMeshes.size();
         }
