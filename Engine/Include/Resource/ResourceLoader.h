@@ -23,6 +23,8 @@ namespace MRenderer
         static std::shared_ptr<CubeMapResource> ImportCubeMap(std::string_view file_path, std::string_view repo_path);
         
         static std::optional<TextureData> LoadImageFile(std::string_view path);
+        static std::optional<TextureData> LoadPNGImageFile(std::string_view local_path);
+        static std::optional<TextureData> LoadHDRImageFile(std::string_view local_path);
         static std::array<TextureData, 6> LoadCubeMap(std::string_view path);
 
         static Vector3 CalculateTangent(const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector2& t0, const Vector2& t1, const Vector2& t2);

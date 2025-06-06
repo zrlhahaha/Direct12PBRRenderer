@@ -226,22 +226,78 @@ namespace MRenderer
     std::optional<TextureData> ResourceLoader::LoadImageFile(std::string_view local_path)
     {
         using namespace DirectX;
+        using std::filesystem::path;
+
         // initialize DirectXTex library
         // ref: https://github.com/microsoft/DirectXTex/wiki/DirectXTex
-        static bool _ = 
-            []() 
+        static bool _ =
+            []()
             {
                 ThrowIfFailed(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
                 return true;
             }();
 
+        path extension = path(local_path).extension();
+        if (extension == ".png") 
+        {
+            return LoadPNGImageFile(local_path);
+        }
+        else if(extension == ".hdr")
+        {
+            return LoadHDRImageFile(local_path);
+        }
+        else 
+        {
+            ASSERT(false && "Not Implemented");
+            return std::nullopt;
+        }
+    }
+
+    std::optional<TextureData> ResourceLoader::LoadPNGImageFile(std::string_view local_path)
+    {
+        using namespace DirectX;
+
         ScratchImage container;
         ThrowIfFailed(DirectX::LoadFromWICFile(ToWString(local_path).data(), WIC_FLAGS_NONE, nullptr, container));
 
-        const Image * image = container.GetImage(0, 0, 0);
+        const Image* image = container.GetImage(0, 0, 0);
         uint32 size = static_cast<uint32>(image->width * image->height * DirectX::BitsPerPixel(image->format) / CHAR_BIT);
 
-        if ((image->width % 4) != 0 || (image->height % 4) != 0) 
+        if ((image->width % 4) != 0 || (image->height % 4) != 0)
+        {
+            Warn(std::format("BC requires the width and height of the texture must be a multiple of 4, {} is not satisfied", local_path));
+            return std::nullopt;
+        }
+
+        return TextureData(
+            BinaryData(image->pixels, size),
+            static_cast<uint32>(image->width),
+            static_cast<uint32>(image->height),
+            static_cast<ETextureFormat>(image->format)
+        );
+    }
+
+    std::optional<TextureData> ResourceLoader::LoadHDRImageFile(std::string_view local_path)
+    {
+        using namespace DirectX;
+
+        DirectX::ScratchImage container;
+        HRESULT hr = DirectX::LoadFromHDRFile(
+            ToWString(local_path).data(),
+            nullptr,
+            container
+        );
+
+        if (FAILED(hr)) {
+            std::cerr << "Failed to load HDR file. Error: " << std::hex << hr << std::endl;
+            CoUninitialize();
+            return std::nullopt;
+        }
+
+        const DirectX::Image* image = container.GetImage(0, 0, 0);
+        uint32 size = static_cast<uint32>(image->width * image->height * DirectX::BitsPerPixel(image->format) / CHAR_BIT);
+
+        if ((image->width % 4) != 0 || (image->height % 4) != 0)
         {
             Warn(std::format("BC requires the width and height of the texture must be a multiple of 4, {} is not satisfied", local_path));
             return std::nullopt;
@@ -260,7 +316,7 @@ namespace MRenderer
         using std::filesystem::path;
 
         std::array<TextureData, 6> texture_data;
-        const char* file_names[] = { "posx.jpg", "negx.jpg", "posy.jpg", "negy.jpg", "posz.jpg", "negz.jpg" };
+        const char* file_names[] = { "px.hdr", "nx.hdr", "py.hdr", "ny.hdr", "pz.hdr", "nz.hdr" };
         for (uint32 i = 0; i < 6; i++)
         {
             path local_path = filepath / path(file_names[i]);

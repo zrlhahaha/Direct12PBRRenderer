@@ -37,12 +37,17 @@ cbuffer GlobalConstant : register(b2)
     float4x4 View;
     float4x4 Projection;
     float4x4 InvProjection;
+
     float3 CameraPos;
     float Ratio;
+
     float2 Resolution;
     float Near;
     float Far;
+
     float Fov;
+    float DeltaTime;
+    float Time;
 }
 
 // GBufferA R8G8B8A8

@@ -94,4 +94,113 @@ namespace MRenderer
 
         return std::make_unique<D3D12ShaderCompilation>(blob, shader_reflection);
     }
+
+    D3D12ShaderCompilation::D3D12ShaderCompilation(IDxcBlob* code_blob, ID3D12ShaderReflection* shader_reflection)
+        :mCodeBlob(code_blob), mShaderReflection(shader_reflection)
+    {
+        mShaderReflection->GetDesc(&mShaderDesc);
+
+        for (uint32 i = 0, cbuffer_index = 0; i < mShaderDesc.BoundResources; i++)
+        {
+            D3D12_SHADER_INPUT_BIND_DESC desc;
+            mShaderReflection->GetResourceBindingDesc(i, &desc);
+
+            if (desc.Type == D3D_SIT_CBUFFER)
+            {
+                ID3D12ShaderReflectionConstantBuffer* cbuffer_reflection = shader_reflection->GetConstantBufferByIndex(cbuffer_index++);
+                mConstantBuffer.emplace_back(desc.BindPoint, desc.BindCount, desc.Name, cbuffer_reflection);
+            }
+            else
+            {
+                EShaderAttrType attr_type = EShaderAttrType_None;
+                if (desc.Type == D3D_SIT_TEXTURE)
+                {
+                    attr_type = EShaderAttrType_Texture;
+                }
+                else if (desc.Type == D3D_SIT_SAMPLER)
+                {
+                    attr_type = EShaderAttrType_Sampler;
+                }
+                else if (desc.Type == D3D11_SIT_UAV_RWTYPED) 
+                {
+                    attr_type = EShaderAttrType_RWTexture;
+                }
+                else if (desc.Type == D3D_SIT_STRUCTURED)
+                {
+                    attr_type = EShaderAttrType_StructuredBuffer;
+                }
+                else if (desc.Type == D3D_SIT_UAV_RWSTRUCTURED)
+                {
+                    attr_type = EShaderAttrType_RWStructuredBuffer;
+                }
+
+                mShaderAttribute.emplace_back(attr_type, desc.BindPoint, desc.BindCount, desc.Name);
+            }
+        }
+    }
+
+    const ShaderConstantBufferAttribute* D3D12ShaderCompilation::FindConstantBufferAttribute(std::string sematics_name) const
+    {
+        for (uint32 i = 0; i < GetConstantBufferCount(); i++)
+        {
+            if (mConstantBuffer[i].mName == sematics_name)
+            {
+                return &mConstantBuffer[i];
+            };
+        }
+
+        return nullptr;
+    }
+
+    const ShaderAttribute* D3D12ShaderCompilation::FindAttribute(EShaderAttrType attr_type, std::string_view semantic_name) const
+    {
+        auto it = std::find_if(mShaderAttribute.begin(), mShaderAttribute.end(),
+            [&](auto& attr)
+            {
+                return attr.mType == attr_type, attr.mName == semantic_name;
+            }
+        );
+
+        if (it == mShaderAttribute.end())
+        {
+            return nullptr;
+        }
+        else
+        {
+            return &*it;
+        }
+    }
+
+    // count how many attributes of the type in the shader
+    uint32 D3D12ShaderCompilation::CountAttribute(EShaderAttrType type) const
+    {
+        size_t num = std::count_if(mShaderAttribute.begin(), mShaderAttribute.end(),
+            [&](auto it)
+            {
+                return it.mType == type;
+            }
+        );
+
+        return static_cast<uint32>(num);
+    }
+
+    // find the index-th attribute of the type in the shader
+    const ShaderAttribute* D3D12ShaderCompilation::IndexAttribute(EShaderAttrType type, uint32 index) const
+    {
+        auto it = std::find_if(mShaderAttribute.begin(), mShaderAttribute.end(),
+            [&](auto it)
+            {
+                return it.mType == type && index-- == 0;
+            }
+        );
+
+        if (it == mShaderAttribute.end())
+        {
+            return nullptr;
+        }
+        else
+        {
+            return &*it;
+        }
+    }
 }

@@ -15,13 +15,13 @@ namespace MRenderer
 
     public:
         // allocate transient resource, could be render target and depth stencil depend on texture format
-        uint32 Allocate(RenderTargetKey key);
-        void Free(RenderTargetKey key, uint32 index);
+        uint32 Allocate(TextureFormatKey key);
+        void Free(TextureFormatKey key, uint32 index);
         void Reset();
-        IDeviceResource* GetResource(RenderTargetKey key, uint32 index);
+        IDeviceResource* GetResource(TextureFormatKey key, uint32 index);
 
     protected:
-        std::unordered_map<RenderTargetKey, std::vector<Item>> mTransientResources;
+        std::unordered_map<TextureFormatKey, std::vector<Item>> mTransientResources;
     };
 
     class FrameGraph 

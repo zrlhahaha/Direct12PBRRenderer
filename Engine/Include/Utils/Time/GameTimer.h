@@ -36,13 +36,11 @@ namespace MRenderer
 
         void Tick()
         {
-
             LARGE_INTEGER counter;
             assert(QueryPerformanceCounter(&counter));
 
             mDeltaTime = max((counter.QuadPart - mLastCounter) * mPerformanceFrequency, 0);
             mTotalTime += mDeltaTime;
-
             mLastCounter = counter.QuadPart;
         }
 

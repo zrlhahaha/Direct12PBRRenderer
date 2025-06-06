@@ -13,7 +13,7 @@ namespace MRenderer
         SetupPipeline(pipeline);
     }
 
-    D3D12CommandList* RenderScheduler::ExecutePipeline(Scene* scene, Camera* camera)
+    D3D12CommandList* RenderScheduler::ExecutePipeline(Scene* scene, Camera* camera, GameTimer* timer)
     {
         mCommandList->BeginFrame();
 
@@ -30,21 +30,15 @@ namespace MRenderer
                 .Near = camera->Near(),
                 .Far = camera->Far(),
                 .Fov = camera->Fov(),
+                .DeltaTime = timer->DeltaTime(),
+                .Time = timer->TotalTime(),
             }
         );
         mCommandList->SetGrphicsConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
+        mCommandList->SetComputeConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
 
         mFrameGraph->Execute(mCommandList.get(), scene, camera);
 
-        // present render target
-        PresentPass* present_pass = mFrameGraph->GetPipeline()->GetPresentPass();
-        ASSERT(present_pass->GetRenderTargetNodes().size() > 0);
-
-        RenderPassNode* res = present_pass->IndexRenderTarget(0);
-        DeviceTexture2D* rt = dynamic_cast<DeviceTexture2D*>(res->GetResource());
-        ASSERT(rt);
-
-        mCommandList->Present(rt);
         mCommandList->EndFrame();
         return mCommandList.get();
     }

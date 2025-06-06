@@ -84,7 +84,7 @@ namespace MRenderer
 
     void ImportCubeMapCommand::Execute()
     {
-        auto source_path = mParser.get<std::string>("file");
+        auto source_path = mParser.get<std::string>("folder");
         auto dest_path = mParser.get<std::string>("output");
 
         if (source_path == "" || dest_path == "")
@@ -111,5 +111,61 @@ namespace MRenderer
         std::shared_ptr<ModelResource> res = DefaultResource::CreateStandardSphereModel(output_path);
         ResourceLoader::Instance().DumpResource(*res);
         Log("Create Sphere Model Finish, Resource Is Saved To ", output_path);
+    }
+
+    // note: command is executed on worker thread
+    void CommandExecutor::StartReceivingCommand()
+    {
+        auto future = TaskScheduler::Instance().ExecuteOnWorker(
+            [&]() -> void {
+                const uint32 CommandStringBufferSize = 500;
+
+                while (true)
+                {
+                    char cmd[CommandStringBufferSize];
+                    std::cin.getline(cmd, CommandStringBufferSize);
+
+                    size_t size = strlen(cmd);
+                    ASSERT(size <= CommandStringBufferSize);
+
+                    std::string line(cmd, size);
+                    size_t index = line.find(' ');
+
+
+                    if (!line.empty())
+                    {
+                        // execute command
+                        std::string cmd_str;
+                        if (index == std::string::npos)
+                        {
+                            cmd_str = line;
+                        }
+                        else
+                        {
+                            cmd_str = line.substr(0, index);
+                        }
+
+                        auto future = TaskScheduler::Instance().ExecuteOnMainThread(
+                            [=, this]()
+                            {
+                                ExecuteCommand(cmd_str, line);
+                            }
+                        );
+
+                        // wait until the command is done
+                        future.wait();
+                    }
+                    else
+                    {
+                        // or log usage
+                        for (auto& it : mCommandMap)
+                        {
+                            Log(it.first);
+                            Log(it.second->mParser.usage());
+                        }
+                    }
+                }
+            }
+        );
     }
 }

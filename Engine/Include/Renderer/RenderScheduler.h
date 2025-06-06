@@ -2,6 +2,7 @@
 #include "Renderer/Device/Direct12/D3D12CommandList.h"
 #include "Renderer/FrameGraph.h"
 #include "Renderer/Camera.h"
+#include "Utils/Time/GameTimer.h"
 
 namespace MRenderer 
 {
@@ -12,7 +13,7 @@ namespace MRenderer
         RenderScheduler(const RenderScheduler&) = delete;
         RenderScheduler& operator=(const RenderScheduler&) = delete;
 
-        D3D12CommandList* ExecutePipeline(Scene* scene, Camera* camera);
+        D3D12CommandList* ExecutePipeline(Scene* scene, Camera* camera, GameTimer* timer);
         void SetupPipeline(IRenderPipeline* pipeline);
         FrustumCullStatus GetStatus() const;
 

@@ -20,23 +20,28 @@ namespace MRenderer
 
     enum EShaderAttrType 
     {
+        EShaderAttrType_None = 0,
         EShaderAttrType_Texture,
         EShaderAttrType_Sampler,
-        EShaderAttrType_Uav,
+        EShaderAttrType_RWTexture,
         EShaderAttrType_ConstantBuffer,
+        EShaderAttrType_StructuredBuffer,
+        EShaderAttrType_RWStructuredBuffer,
     };
 
 
     struct ShaderAttribute
     {
     public:
-        ShaderAttribute(uint16 bind_point, uint16 bind_count, std::string_view name)
-            :mBindPoint(bind_point), mBindCount(bind_count), mName(name)
+        ShaderAttribute(EShaderAttrType type, uint16 bind_point, uint16 bind_count, std::string_view name)
+            : mType(type), mBindPoint(bind_point), mBindCount(bind_count), mName(name)
         {
         }
 
+        EShaderAttrType mType;
         uint16 mBindPoint;
         uint16 mBindCount;
+        
         std::string mName;
     };
 
@@ -64,7 +69,7 @@ namespace MRenderer
     struct ShaderConstantBufferAttribute : public ShaderAttribute
     {
         ShaderConstantBufferAttribute(uint16 bind_point, uint16 bind_count, std::string_view name, ID3D12ShaderReflectionConstantBuffer* reflection)
-            :ShaderAttribute(bind_point, bind_count, name)
+            :ShaderAttribute(EShaderAttrType_ConstantBuffer, bind_point, bind_count, name)
         {
             D3D12_SHADER_BUFFER_DESC desc;
             reflection->GetDesc(&desc);
@@ -73,6 +78,7 @@ namespace MRenderer
             mVaraibleCount = desc.Variables;
             mSize = desc.Size;
 
+            // retrieve all attributes in the constant buffer
             mAttributes.reserve(desc.Variables);
             for (uint32 i = 0; i < desc.Variables; i++)
             {
@@ -91,96 +97,31 @@ namespace MRenderer
     class D3D12ShaderCompilation
     {
     public:
-        D3D12ShaderCompilation(IDxcBlob* code_blob, ID3D12ShaderReflection* shader_reflection)
-            :mCodeBlob(code_blob), mShaderReflection(shader_reflection)
+        D3D12ShaderCompilation(IDxcBlob* code_blob, ID3D12ShaderReflection* shader_reflection);
+
+        inline uint32 GetTextureCount() const
         {
-            mShaderReflection->GetDesc(&mShaderDesc);
-
-            for (uint32 i = 0, cbuffer_index = 0; i < mShaderDesc.BoundResources; i++)
-            {
-                D3D12_SHADER_INPUT_BIND_DESC desc;
-                mShaderReflection->GetResourceBindingDesc(i, &desc);
-
-                if (desc.Type == D3D_SIT_CBUFFER)
-                {
-                    ID3D12ShaderReflectionConstantBuffer* cbuffer_reflection = shader_reflection->GetConstantBufferByIndex(cbuffer_index++);
-                    mConstantBufferAttr.emplace_back(desc.BindPoint, desc.BindCount, desc.Name, cbuffer_reflection);
-                }
-                else if (desc.Type == D3D_SIT_TEXTURE)
-                {
-                    mTextureAttr.emplace_back(desc.BindPoint, desc.BindCount, desc.Name);
-                }
-                else if(desc.Type == D3D_SIT_SAMPLER) 
-                {
-                    mSamplerAttr.emplace_back(desc.BindPoint, desc.BindCount, desc.Name);
-                }
-                else if (desc.Type == D3D_SIT_UAV_RWTYPED) 
-                {
-                    mUavAttr.emplace_back(desc.BindPoint, desc.BindCount, desc.Name);
-                }
-                else
-                {
-                    UNEXPECTED("Unspport Parameter Type");
-                }
-            }
-
-            ASSERT(mTextureAttr.size() <= ShaderResourceMaxTexture);
-            ASSERT(mSamplerAttr.size() <= ShaderResourceMaxTexture);
-            ASSERT(mConstantBufferAttr.size() <= ShaderResourceMaxTexture);
-        }
-
-        inline size_t GetTextureCount() const
-        {
-            return mTextureAttr.size();
-        }
-
-        inline size_t GetSamplerCount() const
-        {
-            return mSamplerAttr.size();
-        }
-
-        inline size_t GetConstantBufferCount() const
-        {
-            return mConstantBufferAttr.size();
+            return CountAttribute(EShaderAttrType_Texture);
         }
 
         inline const ShaderAttribute* GetTextureAttribute(uint32 index) const 
         {
-            return &mTextureAttr[index];
+            return IndexAttribute(EShaderAttrType_Texture, index);
+        }
+
+        inline uint32 GetConstantBufferCount() const
+        {
+            return static_cast<uint32>(mConstantBuffer.size());
         }
 
         inline const ShaderConstantBufferAttribute* GetConstantBufferAttribute(uint32 index) const
         {
-            return &mConstantBufferAttr[index];
+            return &mConstantBuffer[index];
         }
 
-        inline const ShaderAttribute* FindSamplerAttribute(std::string_view name) const
-        {
-            return FindAttribute(EShaderAttrType::EShaderAttrType_Sampler, name);
-        }
+        const ShaderAttribute* FindAttribute(EShaderAttrType attr_type, std::string_view semantic_name) const;
 
-        inline const ShaderAttribute* FindTextureAttribute(std::string_view name) const
-        {
-            return FindAttribute(EShaderAttrType::EShaderAttrType_Texture, name);
-        }
-
-        inline const ShaderAttribute* FindUavAttribute(std::string_view name) const
-        {
-            return FindAttribute(EShaderAttrType::EShaderAttrType_Uav, name);
-        }
-
-        inline const ShaderConstantBufferAttribute* FindConstantBufferAttribute(std::string sematics_name) const
-        {
-            for (uint32 i = 0; i < GetConstantBufferCount(); i++)
-            {
-                if (mConstantBufferAttr[i].mName == sematics_name)
-                {
-                    return &mConstantBufferAttr[i];
-                };
-            }
-
-            return nullptr;
-        }
+        const ShaderConstantBufferAttribute* FindConstantBufferAttribute(std::string sematics_name) const;
 
         inline IDxcBlob* GetShaderByteCode() const
         {
@@ -188,43 +129,20 @@ namespace MRenderer
         }
 
     protected:
-        const ShaderAttribute* FindAttribute(EShaderAttrType attr_type, std::string_view semantic_name) const
-        {
-            std::vector<ShaderAttribute> D3D12ShaderCompilation::* table_map[] =
-            {
-                &D3D12ShaderCompilation::mTextureAttr,
-                &D3D12ShaderCompilation::mSamplerAttr,
-                &D3D12ShaderCompilation::mUavAttr,
-            };
 
-            auto& attr_table = this->*table_map[attr_type];
+        // count how many attributes of the type in the shader
+        inline uint32 CountAttribute(EShaderAttrType type) const;
 
-            auto it = std::find_if(attr_table.begin(), attr_table.end(),
-                [&](auto& attr)
-                {
-                    return attr.mName == semantic_name;
-                }
-            );
-
-            if (it == attr_table.end())
-            {
-                return nullptr;
-            }
-            else
-            {
-                return &*it;
-            }
-        }
+        // find the index-th attribute of the type in the shader
+        inline const ShaderAttribute* IndexAttribute(EShaderAttrType type, uint32 index) const;
 
     protected:
         ComPtr<IDxcBlob> mCodeBlob;
         ComPtr<ID3D12ShaderReflection> mShaderReflection;
         D3D12_SHADER_DESC mShaderDesc;
 
-        std::vector<ShaderConstantBufferAttribute> mConstantBufferAttr;
-        std::vector<ShaderAttribute> mSamplerAttr;
-        std::vector<ShaderAttribute> mTextureAttr;
-        std::vector<ShaderAttribute> mUavAttr;
+        std::vector<ShaderConstantBufferAttribute> mConstantBuffer;
+        std::vector<ShaderAttribute> mShaderAttribute; // texture, uav, rwstructured buffer
     };
 
 

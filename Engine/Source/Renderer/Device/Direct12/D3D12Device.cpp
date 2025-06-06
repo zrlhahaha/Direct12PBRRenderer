@@ -21,12 +21,10 @@ namespace MRenderer
           mScissorRect(0, 0, width, height), mFenceValue(1),
           mWidth(width), mHeight(height), mResourceInitialized(false)
     {
-#ifndef NDebug
         //ComPtr, & operator will release the reference, getaddressof won't
         // debug controller
         ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&mDebugController)));
         mDebugController->EnableDebugLayer();
-#endif
 
         // dxgi factory
         ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mDxgiFactory)));
@@ -156,8 +154,6 @@ namespace MRenderer
 
     D3D12Device::~D3D12Device()
     {
-        GD3D12Device = nullptr;
-        GD3D12RawDevice = nullptr;
     }
 
     // initialize internal resource
@@ -257,7 +253,7 @@ namespace MRenderer
     std::shared_ptr<DeviceStructuredBuffer> D3D12Device::CreateStructuredBuffer(uint32 data_size , uint32 stride, const void* initial_data/*=nullptr*/)
     {
         ASSERT(data_size % stride == 0);
-        ASSERT(stride % 4);
+        ASSERT(stride % 4 == 0);
 
         // resource allocation
         MemoryAllocation* allocation = CreateDeviceBuffer(data_size, true, initial_data, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -268,6 +264,7 @@ namespace MRenderer
         {
             .Format = DXGI_FORMAT_UNKNOWN,
             .ViewDimension = D3D12_SRV_DIMENSION_BUFFER,
+            .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
             .Buffer
             {
                 .FirstElement = 0,
@@ -677,7 +674,7 @@ namespace MRenderer
         size_t intermediate_size = GetRequiredIntermediateSize(resource, 0, 1);
 
         ASSERT(size <= intermediate_size);
-        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(intermediate_size);
+        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
 
         // copy data to the memory in the upload heap
         upload_buffer.Upload(data, size);

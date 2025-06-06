@@ -117,19 +117,19 @@ float4 ps_main(PSInput input) : SV_TARGET
 
     float3 light_dir_ws = normalize(float3(1, 1, 1));
     float3 light_color = float3(1, 1, 1);
+    float3 light_luminance = float3(1000, 1000, 1000);
 
     // direct light
     BRDFInput brdf_input;
     brdf_input.Metallic = metallic;
     brdf_input.Roughness = roughness;
     brdf_input.Albedo = albedo;
-    brdf_input.LightColor = light_color;
     brdf_input.Normal = normal_ws;
     brdf_input.ViewDir = view_ws;
     brdf_input.LightDir = light_dir_ws;
 
     float3 direct_color = brdf(brdf_input) * light_color * max(dot(normal_ws, light_dir_ws), 0.0);
-    // return float4(encode_gamma(direct_color), 1);
-    return float4(encode_gamma(env_diffuse + env_specular + direct_color), 1);
-    // return float4(encode_gamma(brdf_input.Metallic.xxx), 1);
+    float3 direct_luminance = direct_color * light_luminance;
+
+    return float4(encode_gamma(env_diffuse + env_specular /*+ direct_color*/), 1);
 }

@@ -6,15 +6,7 @@
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
-    MRenderer::App* app = new MRenderer::App(hInstance);
-    app->Initialize();
-
+    auto app = std::make_unique<MRenderer::App>(hInstance);
     int ret_code = app->Run();
-
-    delete app;
-
-    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_DEBUG);
-    _CrtDumpMemoryLeaks();
-
     return ret_code;
 }

@@ -9,6 +9,8 @@ namespace MRenderer
     enum ETextureFormat : uint8
     {
         ETextureFormat_None = 0,
+        ETextureFormat_R32G32B32A32_FLOAT = 2,
+        ETextureFormat_R16G16B16A16_FLOAT = 10,
         ETextureFormat_R16G16B16A16_UNORM = 11,
         ETextureFormat_FORMAT_R10G10B10A2_UNORM = 24,
         ETextureFormat_R8G8B8A8_UNORM = 28,

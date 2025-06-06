@@ -18,7 +18,7 @@ namespace MRenderer
     class Camera;
     class D3D12CommandList;
 
-    union RenderTargetKey
+    union TextureFormatKey
     {
         struct
         {
@@ -30,40 +30,40 @@ namespace MRenderer
         } Info;
         uint64 Key;
 
-        RenderTargetKey() 
+        TextureFormatKey() 
             :Key(0)
         {
         }
 
-        RenderTargetKey(uint16 width, uint16 height, ETextureFormat format)
+        TextureFormatKey(uint16 width, uint16 height, ETextureFormat format)
             :Info{ width, height, format }
         {
         }
 
-        RenderTargetKey(const RenderTargetKey& other) 
+        TextureFormatKey(const TextureFormatKey& other) 
             :Key(other.Key)
         {
         }
 
-        RenderTargetKey& operator= (RenderTargetKey & other)
+        TextureFormatKey& operator= (TextureFormatKey & other)
         {
             Key = other.Key;
             return *this;
         }
 
-        bool operator==(const RenderTargetKey& other) const
+        bool operator==(const TextureFormatKey& other) const
         {
             return Key == other.Key;
         }
     };
 
-    static_assert(sizeof(RenderTargetKey) == 8);
+    static_assert(sizeof(TextureFormatKey) == 8);
 }
 
 template <>
-struct std::hash<MRenderer::RenderTargetKey>
+struct std::hash<MRenderer::TextureFormatKey>
 {
-    std::size_t operator()(const MRenderer::RenderTargetKey& k) const
+    std::size_t operator()(const MRenderer::TextureFormatKey& k) const
     {
         return k.Key;
     }
@@ -158,12 +158,17 @@ namespace MRenderer
         Matrix4x4 View;
         Matrix4x4 Projection;
         Matrix4x4 InvProjection;
+        
         Vector3 CameraPos;
         float Ratio;
+        
         Vector2 Resolution;
         float Near;
         float Far;
+        
         float Fov;
+        float DeltaTime;
+        float Time;
     };
 
     struct ConstantBufferInstance
@@ -227,8 +232,12 @@ namespace MRenderer
     struct RenderPassNode
     {
     public:
-        ETextureFormat Format();
+        TextureFormatKey GetTextureFormatKey();
+
+        // get the actual gpu resource, should only be called after the RenderGraph is compiled, or it will return nullptr instead
         IDeviceResource* GetResource();
+
+        // the actual RenderPassNode who owns the transient resource, which is the first IRenderPass who declare the resource
         RenderPassNode* GetActualPassNode();
 
     public:
@@ -244,7 +253,7 @@ namespace MRenderer
             );
         }
 
-        static std::unique_ptr<RenderPassNode> TransientPassResource(std::string_view name, IRenderPass* pass, RenderTargetKey key)
+        static std::unique_ptr<RenderPassNode> TransientPassResource(std::string_view name, IRenderPass* pass, TextureFormatKey key)
         {
             return std::unique_ptr<RenderPassNode>(
                 new RenderPassNode{
@@ -284,8 +293,8 @@ namespace MRenderer
             // for transient resource, refer to a trasient resource in RenderTargetPool
             struct 
             {
-                IDeviceResource* Resource;
-                RenderTargetKey RenderTargetKey;
+                IDeviceResource* Resource; // may be render target or depth stencil
+                TextureFormatKey RenderTargetKey;
                 uint32 Index;
             } TransientResource;
             
@@ -302,16 +311,23 @@ namespace MRenderer
         IRenderPass() = default;
         virtual ~IRenderPass() {};
 
+        IRenderPass(const IRenderPass&) = delete;
+        IRenderPass(IRenderPass&&) = delete;
+
+        IRenderPass& operator=(const IRenderPass&) = delete;
+        IRenderPass& operator=(IRenderPass&&) = delete;
+
         inline RenderPassNode* IndexRenderTarget(uint32 index) { return mRenderTargets[index]; }
         inline RenderPassNode* GetDepthStencil() { return mDepthStencil; }
         inline const std::array<RenderPassNode*, MaxRenderTargets>& GetRenderTargetNodes() const { return mRenderTargets; }
         inline uint32 GetRenderTargetsSize() const{ return mNumRenderTargets; }
 
-        // use other render pass's output texture as shader input texture
-        void SampleTexture(std::string_view semantic_name, RenderPassNode* node);
+        // declare other render pass's output texture as this pass's input
+        RenderPassNode* SampleTexture(RenderPassNode* node);
+        RenderPassNode* SampleTexture(IRenderPass* pass, std::string_view output_name);
 
         // create transient RT and write to it
-        void WriteRenderTarget(std::string_view name, RenderTargetKey key);
+        void WriteRenderTarget(std::string_view name, TextureFormatKey key);
 
         // write to previous pass's output RT
         void WriteRenderTarget(std::string_view name, RenderPassNode* node);
@@ -326,12 +342,10 @@ namespace MRenderer
         void WritePersistent(std::string_view name, IDeviceResource* persisten_resource);
 
         RenderPassNode* FindOutput(std::string_view name); 
+        RenderPassNode* FindInput(std::string_view name);
 
         const RenderPassStateDesc* GetPassStateDesc() const;
-        void BindRenderPassInput(ShadingState* shading_state);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
-
     protected:
-        virtual void PostCompile() {};
         virtual void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) {};
 
         void UpdatePassStateDesc();
@@ -349,9 +363,6 @@ namespace MRenderer
         // mInputNodes contains other pass's RenderTarget and DepthStencil that are gonna be sampled by this pass
         std::vector<RenderPassNode*> mInputNodes;
         
-        // corresponding shader semantics name for shader input textures
-        std::vector<std::string> mInputSemantics;
-        
         // render targets for this pass, use WriteRenderTarget to add one
         std::array<RenderPassNode*, MaxRenderTargets> mRenderTargets;
         // depth-stencil for this pass use WriteDepthStencil to add one
@@ -363,39 +374,27 @@ namespace MRenderer
         bool mSortVisited = false; // for topology sort
     };
 
-    class PresentPass : public IRenderPass
-    {
-    public:
-        PresentPass()
-        {
-        }
-
-        void Connect(RenderPassNode* node)
-        {
-            WriteRenderTarget("PresentRT", node);
-        }
-    };
-
     class IRenderPipeline 
     {
         friend class FrameGraph;
     public:
         IRenderPipeline()
+            :mPresentPass(nullptr)
         {
-            mPresentPass = std::make_unique<PresentPass>();
         }
+        virtual ~IRenderPipeline() {}
 
         IRenderPipeline(const IRenderPipeline&) = delete;
         IRenderPipeline& operator=(const IRenderPipeline&) = delete;
 
-        virtual ~IRenderPipeline() {}
-        
-        inline PresentPass* GetPresentPass() { return mPresentPass.get();}
+        inline IRenderPass* GetPresentPass() { ASSERT(mPresentPass); return mPresentPass; }
+        inline void SetPresentPass(IRenderPass* pass) { mPresentPass = pass; }
 
         virtual void Setup() = 0;
         virtual FrustumCullStatus GetStatus() const { return FrustumCullStatus{}; };
 
     protected:
-        std::unique_ptr<PresentPass> mPresentPass;
+        // the last pass in the render graph
+        IRenderPass* mPresentPass;
     };
 }

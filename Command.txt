@@ -1,0 +1,4 @@
+ImportModel -f OriginalAsset/cigar_box/Overview.obj -o Asset/Model/CigarBox
+ImportModel -f OriginalAsset/sofa/Overview.obj -o Asset/Model/Sofa
+CreateSphereModel -o Asset/Model/Sphere
+ImportCubeMap -f OriginalAsset/SkyBox/Wild -o Asset/Skybox/Wild

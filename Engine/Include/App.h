@@ -46,6 +46,7 @@ namespace MRenderer
         void UpdateFrameStatus(const FrustumCullStatus& culling_status);
         bool InitMainWindow();
         int InternalRun();
+        void Paint();
 
     protected:
         static App* app_;
@@ -57,8 +58,7 @@ namespace MRenderer
             double TimeElapsed = 0;
         } mPerfromRecord;
 
-        bool paused = false;
-
+        bool mPaused = false;
 
         HINSTANCE mhAppInst = nullptr; // application instance handle
         HWND      mhMainWnd = nullptr; // main window handle
@@ -68,24 +68,20 @@ namespace MRenderer
         bool      mResizing = false;   // are the resize bars being dragged?
         bool      mFullscreenState = false;// fullscreen enabled
 
-        // Set true to use 4X MSAA (?.1.8).  The default is false.
-        bool      m4xMsaaState = false;    // 4X MSAA enabled
-        UINT      m4xMsaaQuality = 0;      // quality level of 4X MSAA
-
         GameTimer mTimer;
         float mRenderTimeStamp = 0;
 
         Input mInput;
 
         std::string mMainWndCaption = "MRenderer";
-        uint32 mClientWidth = 800;
-        uint32 mClientHeight = 600;
+        uint32 mClientWidth = 1280;
+        uint32 mClientHeight = 720;
 
         std::unique_ptr<Camera> mCamera;
         std::unique_ptr<RenderScheduler> mRenderScheduler;
         std::unique_ptr<DeferredRenderPipeline> mRenderPipeline;
-        std::unique_ptr<D3D12Device> mDevice;
         std::shared_ptr<Scene> mScene;
+        std::unique_ptr<D3D12Device> mDevice;
         CommandExecutor mCmdExecutor;
     };
 }

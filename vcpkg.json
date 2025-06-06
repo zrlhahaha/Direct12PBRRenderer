@@ -2,6 +2,7 @@
     "dependencies": [
       "directxtex",
       "directx-dxc",
-      "gtest"
+      "gtest",
+      "winpixevent"
     ]
 }

@@ -1,6 +1,7 @@
 #include "Renderer/Device/Direct12/D3D12Device.h"
 #include "Renderer/Pipeline/IPipeline.h"
 #include "Resource/ResourceLoader.h"
+#include "Renderer/Device/Direct12/D3D12CommandList.h"
 
 namespace MRenderer
 {
@@ -60,15 +61,16 @@ namespace MRenderer
     bool ShadingState::SetTexture(std::string_view semantic_name, DeviceTexture* texture)
     {
         ASSERT(mShaderProgram);
+        ASSERT(texture);
 
         const ShaderAttribute* attr;
         if (mIsCompute) 
         {
-            attr = mShaderProgram->mCS->FindTextureAttribute(semantic_name);
+            attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_Texture, semantic_name);
         }
         else 
         {
-            attr = mShaderProgram->mPS->FindTextureAttribute(semantic_name);
+            attr = mShaderProgram->mPS->FindAttribute(EShaderAttrType_Texture, semantic_name);
         }
 
         if (!attr)
@@ -84,7 +86,7 @@ namespace MRenderer
     bool ShadingState::SetRWTexture(std::string_view semantic_name, DeviceTexture2D* texture)
     {
         ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->mCS->FindUavAttribute(semantic_name);
+        const ShaderAttribute* attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
 
         if (!attr)
         {
@@ -100,7 +102,7 @@ namespace MRenderer
     bool ShadingState::SetRWTextureArray(std::string_view semantic_name, DeviceTexture2DArray* texture_array)
     {
         ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->mCS->FindUavAttribute(semantic_name);
+        const ShaderAttribute* attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
 
         if (!attr)
         {
@@ -111,6 +113,7 @@ namespace MRenderer
         //e.g shader code: "RWTexture2DArray PrefilterEnvMap[5]" require array has at least 5 mip levels
         ASSERT(attr->mBindCount <= texture_array->MipSize());
 
+        // assign each mip slice to the corresponding texture array
         for (uint32 mip_level = 0; mip_level < texture_array->MipSize(); mip_level++)
         {
             mResourceBinding.UAVs[attr->mBindPoint + mip_level] = texture_array->GetUnorderedAccessView(mip_level);
@@ -120,8 +123,15 @@ namespace MRenderer
 
     bool ShadingState::SetStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer)
     {
-        ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->mCS->FindUavAttribute(semantic_name);
+        const ShaderAttribute* attr;
+        if (mIsCompute)
+        {
+            attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_Texture, semantic_name);
+        }
+        else
+        {
+            attr = mShaderProgram->mPS->FindAttribute(EShaderAttrType_Texture, semantic_name);
+        }
 
         if (!attr)
         {
@@ -136,7 +146,7 @@ namespace MRenderer
     bool ShadingState::SetRWStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer)
     {
         ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->mCS->FindUavAttribute(semantic_name);
+        const ShaderAttribute* attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_RWStructuredBuffer, semantic_name);
 
         if (!attr)
         {
@@ -169,14 +179,23 @@ namespace MRenderer
     }
 
 
-    void IRenderPass::SampleTexture(std::string_view semantic_name, RenderPassNode* node)
+    RenderPassNode* IRenderPass::SampleTexture(RenderPassNode* node)
     {
         ASSERT(node);
         mInputNodes.push_back(node);
-        mInputSemantics.push_back(semantic_name.data());
+        return node;
     }
 
-    void IRenderPass::WriteRenderTarget(std::string_view name, RenderTargetKey key)
+    RenderPassNode* IRenderPass::SampleTexture(IRenderPass* pass, std::string_view output_name)
+    {
+        ASSERT(pass);
+        RenderPassNode* node = pass->FindOutput(output_name);
+        ASSERT(node);
+        mInputNodes.push_back(node);
+        return node;
+    }
+
+    void IRenderPass::WriteRenderTarget(std::string_view name, TextureFormatKey key)
     {
         ASSERT(mNumRenderTargets != MaxRenderTargets);
         mOutputNodes.push_back(RenderPassNode::TransientPassResource(name, this, key));
@@ -193,7 +212,7 @@ namespace MRenderer
     void IRenderPass::WriteDepthStencil(uint32 width, uint32 height)
     {
         ASSERT(!mDepthStencil && "caon only write to one depth-stencil at a time");
-        mOutputNodes.push_back(RenderPassNode::TransientPassResource("DepthStencil", this, RenderTargetKey(width, height, ETextureFormat_DepthStencil)));
+        mOutputNodes.push_back(RenderPassNode::TransientPassResource("DepthStencil", this, TextureFormatKey(width, height, ETextureFormat_DepthStencil)));
         mDepthStencil = mOutputNodes.back().get();
     }
 
@@ -211,37 +230,28 @@ namespace MRenderer
 
     RenderPassNode* IRenderPass::FindOutput(std::string_view name)
     {
-        for (auto& node : mOutputNodes)
-        {
-            if (node->Name == name)
-            {
-                return node.get();
-            }
-        }
+        auto ret = std::find_if(mOutputNodes.begin(), mOutputNodes.end(), [&](std::unique_ptr<RenderPassNode>& node) { return node->Name == name; });
+        ASSERT(ret != mOutputNodes.end());
 
-        return nullptr;
+        return (ret != mOutputNodes.end()) ? ret->get() : nullptr;
     }
 
-    // bind pass input textures to shading_state
-    void IRenderPass::BindRenderPassInput(ShadingState* shading_state)
+    RenderPassNode* IRenderPass::FindInput(std::string_view name)
     {
-        for (uint32 i = 0; i < mInputNodes.size(); i++) 
-        {
-            RenderPassNode* input = mInputNodes[i];
-            DeviceTexture2D* texture = static_cast<DeviceTexture2D*>(input->GetResource());
-            ASSERT(texture);
-            shading_state->SetTexture(mInputSemantics[i], texture);
-        }
+        auto ret = std::find_if(mInputNodes.begin(), mInputNodes.end(), [&](RenderPassNode* node) { return node->Name == name; });
+        ASSERT(ret != mInputNodes.end());
+
+        return (ret != mInputNodes.end()) ? *ret : nullptr;
     }
 
     void IRenderPass::UpdatePassStateDesc()
     {
-        mPassState.DepthStencilFormat = static_cast<ETextureFormat>(mDepthStencil ? mDepthStencil->Format() : ETextureFormat_None);
+        mPassState.DepthStencilFormat = static_cast<ETextureFormat>(mDepthStencil ? mDepthStencil->GetTextureFormatKey().Info.Format : ETextureFormat_None);
         mPassState.NumRenderTarget = GetRenderTargetsSize();
 
         for (uint32 i = 0; i < mPassState.NumRenderTarget; i++)
         {
-            mPassState.RenderTargetFormats[i] = static_cast<ETextureFormat>(mRenderTargets[i]->Format());
+            mPassState.RenderTargetFormats[i] = static_cast<ETextureFormat>(mRenderTargets[i]->GetTextureFormatKey().Info.Format);
         }
     }
 
@@ -250,22 +260,27 @@ namespace MRenderer
         return &mPassState;
     }
     
-    ETextureFormat RenderPassNode::Format()
+    TextureFormatKey RenderPassNode::GetTextureFormatKey()
     {
         if (Type == ERenderPassNodeType_Transient)
         {
-            return TransientResource.RenderTargetKey.Info.Format;
+            return TransientResource.RenderTargetKey;
         }
         else if (Type == ERenderPassNodeType_Persisten)
         {
             DeviceTexture* texture = dynamic_cast<DeviceTexture*>(PersistentResource);
             ASSERT(texture);
 
-            return texture->Resource()->Format();
+            return TextureFormatKey
+            {
+                static_cast<uint16>(texture->TextureWidth()),
+                static_cast<uint16>(texture->TextureHeight()),
+                texture->Resource()->Format(),
+            };
         }
-        else 
+        else
         {
-            return PassNodeReference->Format();
+            return PassNodeReference->GetTextureFormatKey();
         }
     }
 

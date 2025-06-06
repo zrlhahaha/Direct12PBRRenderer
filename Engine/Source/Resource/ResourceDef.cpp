@@ -94,18 +94,18 @@ namespace MRenderer
 
     Vector4 TextureData::Sample(float u, float v) const
     {
-        // warn: only support r8g8b8a8 for now
-        ASSERT(mInfo.Format == ETextureFormat_R8G8B8A8_UNORM);
+        // warn: only support DXGI_FORMAT_R32G32B32A32_FLOAT for now
+        ASSERT(mInfo.Format == ETextureFormat_R32G32B32A32_FLOAT);
 
         uint32 row =  std::clamp<uint32>(static_cast<uint32>(u * mInfo.Width), 0, mInfo.Width - 1);
         uint32 col =  std::clamp<uint32>(static_cast<uint32>(v * mInfo.Height), 0, mInfo.Height - 1);
         uint32 tex_index = col * mInfo.Width + row;
-        uint8* pixel = reinterpret_cast<uint8*>(mData.GetData()) + tex_index * PixelSize();
+        float* pixel = reinterpret_cast<float*>(mData.GetData()) + tex_index * PixelSize();
 
         Vector4 ret;
         for (uint32 i = 0; i < ChannelCount(); i++)
         {
-            ret[i] = pixel[i] * Inv255;
+            ret[i] = pixel[i];
         }
         return ret;
     }

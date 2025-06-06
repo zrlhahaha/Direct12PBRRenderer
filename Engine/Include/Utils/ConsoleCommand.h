@@ -50,7 +50,7 @@ namespace MRenderer
     public:
         ImportCubeMapCommand()
         {
-            mParser.add<std::string>("file", 'f', "Model File Path", true, "");
+            mParser.add<std::string>("folder", 'f', "Cubemap Folder Path", true, "");
             mParser.add<std::string>("output", 'o', "Repository File Path", true, "");
         }
 
@@ -98,61 +98,19 @@ namespace MRenderer
                 cmd->mParser.parse(args.data());
             }
 
-            cmd->Execute();
+            try
+            {
+                cmd->Execute();
+            }
+            catch (const std::exception& e)
+            {
+                Log("A Exception Was Throwed During Command Execution");
+                Log(e.what());
+                return;
+            }
         }
 
-        // warn: command is executed on worker thread
-        void StartReceivingCommand() 
-        {
-            TaskScheduler::Instance().ExecuteOnWorker(
-                [&]() -> void {
-                    const uint32 CommandStringBufferSize = 500;
-
-                    while (true)
-                    {
-                        char cmd[CommandStringBufferSize];
-                        std::cin.getline(cmd, CommandStringBufferSize);
-
-                        size_t size = strlen(cmd);
-                        ASSERT(size <= CommandStringBufferSize);
-
-                        std::string line(cmd, size);
-                        size_t index = line.find(' ');
-
-
-                        if (!line.empty()) 
-                        {
-                            // execute command
-                            std::string cmd_str;
-                            if (index == std::string::npos)
-                            {
-                                cmd_str = line;
-                            }
-                            else 
-                            {
-                                cmd_str = line.substr(0, index);
-                            }
-
-                            TaskScheduler::Instance().ExecuteOnMainThread(
-                                [=, this]() 
-                                {
-                                    ExecuteCommand(cmd_str, line);
-                                }
-                            );
-                        } 
-                        else
-                        {
-                            // or log usage
-                            for (auto& it : mCommandMap)
-                            {
-                                Log(it.first);
-                                Log(it.second->mParser.usage());
-                            }
-                        }
-                    }
-                }
-            );
-        }
+        void StartReceivingCommand();
     protected:
         std::unordered_map<std::string, std::unique_ptr<ConsoleCommand>> mCommandMap;
     };

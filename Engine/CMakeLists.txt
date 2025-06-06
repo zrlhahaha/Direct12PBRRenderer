@@ -114,10 +114,14 @@ set(D3D12_LIB d3dcompiler D3D12 dxguid dxgi ${DXCOMPILER_TARGET})
 
 target_link_libraries(${TARGET_NAME} PUBLIC ${D3D12_LIB})
 
-target_compile_options(${TARGET_NAME} PUBLIC -msse4.1)
+# enable SSE4.1
+target_compile_options(${TARGET_NAME} PUBLIC /arch:AVX)
 
 find_package(directxtex CONFIG REQUIRED)
 target_link_libraries(${TARGET_NAME} PUBLIC Microsoft::DirectXTex)
 
 find_package(directx-dxc CONFIG REQUIRED)
 target_link_libraries(${TARGET_NAME} PUBLIC Microsoft::DirectXShaderCompiler)
+
+find_package(winpixevent CONFIG REQUIRED)
+target_link_libraries(${TARGET_NAME} PUBLIC Microsoft::WinPixEventRuntime)

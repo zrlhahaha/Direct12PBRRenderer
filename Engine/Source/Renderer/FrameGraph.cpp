@@ -93,7 +93,7 @@ namespace MRenderer
                 RenderPassNode* res = pass->mOutputNodes[node_index].get();
                 if (res->Type == ERenderPassNodeType_Transient) 
                 {
-                    ASSERT(res->TransientResource.Resource == nullptr && res->TransientResource.RenderTargetKey != RenderTargetKey());
+                    ASSERT(res->TransientResource.Resource == nullptr && res->TransientResource.RenderTargetKey != TextureFormatKey());
 
                     uint32 index = mRenderTargetPool.Allocate(res->TransientResource.RenderTargetKey);
                     res->TransientResource.Resource = mRenderTargetPool.GetResource(res->TransientResource.RenderTargetKey, index);
@@ -114,11 +114,6 @@ namespace MRenderer
                 RenderPassNode* res = pass->mInputNodes[node_index];
                 DecreseRef(res);
             }
-        }
-
-        for (auto pass : mPassOrder) 
-        {
-            pass->PostCompile();
         }
     }
 
@@ -243,7 +238,7 @@ namespace MRenderer
         return deps;
     }
 
-    uint32 TransientTexturePool::Allocate(RenderTargetKey key)
+    uint32 TransientTexturePool::Allocate(TextureFormatKey key)
     {
         std::vector<Item>& items = mTransientResources[key];
 
@@ -276,7 +271,7 @@ namespace MRenderer
         }
     }
 
-    void TransientTexturePool::Free(RenderTargetKey key, uint32 index)
+    void TransientTexturePool::Free(TextureFormatKey key, uint32 index)
     {
         mTransientResources[key][index].Occupied = false;
     }
@@ -292,7 +287,7 @@ namespace MRenderer
         }
     }
 
-    IDeviceResource* TransientTexturePool::GetResource(RenderTargetKey key, uint32 index)
+    IDeviceResource* TransientTexturePool::GetResource(TextureFormatKey key, uint32 index)
     {
         return mTransientResources[key][index].Resource.get();
     }

@@ -39,7 +39,6 @@ struct BRDFInput
     float Metallic;
     float Roughness;
     float3 Albedo;
-    float3 LightColor;
     float3 Normal;
     float3 ViewDir;
     float3 LightDir;

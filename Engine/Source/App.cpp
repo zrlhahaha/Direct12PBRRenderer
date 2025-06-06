@@ -68,15 +68,15 @@ namespace MRenderer
 
     bool App::Initialize()
     {
+        std::cout << "Current Working Path: " << std::filesystem::current_path() << std::endl;
+
+        PlateformInitialize();
+
         if (!InitMainWindow())
             return false;
 
         // Do the initial resize code.
         OnResize();
-
-        std::cout << "Current Working Path: " << std::filesystem::current_path() << std::endl;
-
-        PlateformInitialize();
 
         mDevice = std::make_unique<D3D12Device>(mClientWidth, mClientHeight);
         mDevice->BeginFrame();
@@ -91,6 +91,7 @@ namespace MRenderer
 
         mDevice->EndFrame(); // commit resource creation command
         mCmdExecutor.StartReceivingCommand();
+
         return true;
     }
 
@@ -132,7 +133,7 @@ namespace MRenderer
     void App::Render(const GameTimer& gt)
     {
         mDevice->BeginFrame();
-        D3D12CommandList* list = mRenderScheduler->ExecutePipeline(mScene.get(), mCamera.get());
+        D3D12CommandList* list = mRenderScheduler->ExecutePipeline(mScene.get(), mCamera.get(), &mTimer);
         mDevice->EndFrame(list);
     }
 
@@ -210,6 +211,9 @@ namespace MRenderer
                 }
             }
             return 0;
+
+        case WM_PAINT:
+            Paint();
 
             // WM_EXITSIZEMOVE is sent when the user grabs the resize bars.
         case WM_ENTERSIZEMOVE:
@@ -315,53 +319,46 @@ namespace MRenderer
 
     int App::InternalRun()
     {
+        if (! Initialize()) 
+        {
+            return -1;
+        }
+
         MSG msg = { 0 };
-
-        mTimer.Tick();
-
         while (msg.message != WM_QUIT)
         {
-            // If there are Window messages then process them.
             if (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
             {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
-            // Otherwise, do animation/game stuff.
-            else
-            {
-                mTimer.Tick();
-
-                if (!paused)
-                {
-                    if ((mTimer.TotalTime() - mRenderTimeStamp) > (1.0F / 60.0F))
-                    {
-                        mRenderTimeStamp = mTimer.TotalTime();
-
-                        mInput.EndMessage();
-
-                        UpdateFrameStatus(mRenderScheduler->GetStatus());
-
-                        auto future = TaskScheduler::Instance().ExecuteOnMainThread(
-                            [&]()
-                            {
-                                Update(mTimer);
-                                Render(mTimer);
-                            }
-                        );
-                        future.wait();
-                    }
-                }
-                else
-                {
-                    // wait until able to proceed
-                    Sleep(100);
-                }
-
-            }
         }
 
         return (int)msg.wParam;
+    }
+
+    void App::Paint()
+    {
+        if (!mDevice.get()) 
+        {
+            return;
+        }
+
+        mTimer.Tick();
+        if (!mPaused)
+        {
+            mInput.EndMessage();
+            UpdateFrameStatus(mRenderScheduler->GetStatus());
+
+            auto future = TaskScheduler::Instance().ExecuteOnMainThread(
+                [&]()
+                {
+                    Update(mTimer);
+                    Render(mTimer);
+                }
+            );
+            future.wait();
+        }
     }
 
     void App::UpdateFrameStatus(const FrustumCullStatus& culling_status)
@@ -369,20 +366,19 @@ namespace MRenderer
         mPerfromRecord.FrameCount++;
 
         // Compute averages over one second period.
-        const float UpdateInterval = 0.1f;
+        const float UpdateInterval = 1.0f;
         if ((mTimer.TotalTime() - mPerfromRecord.TimeElapsed) >= UpdateInterval)
         {
             uint32 fps = static_cast<uint32>(mPerfromRecord.FrameCount / UpdateInterval);
-            float mspf = 1000.0f / fps;
 
             std::string windowText = mMainWndCaption +
                 "    fps: " + std::to_string(fps) +
-                "   mspf: " + std::to_string(mspf) +
+                "    time" + std::to_string(mTimer.TotalTime()) +
                 " culled: " + std::to_string(culling_status.NumCulled) +
                 " drawed: " + std::to_string(culling_status.NumDrawCall);
 
             SetWindowText(mhMainWnd, windowText.c_str());
-
+             
             // Reset for next average.
             mPerfromRecord.FrameCount = 1;
             mPerfromRecord.TimeElapsed = mTimer.TotalTime();

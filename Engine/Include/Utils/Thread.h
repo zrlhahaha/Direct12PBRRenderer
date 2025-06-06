@@ -30,7 +30,7 @@ namespace MRenderer
             return static_cast<uint32>(mTasks.size());
         };
 
-        // schedule function for later execution, @args will be passed by copy or move operation, use std::ref if you want to pass by reference
+        // schedule function for later execution, @args will be passed by value, use std::ref if you want to pass by reference
         template<typename Fn, typename... Args>
         auto Schedule(Fn func, Args&&... args)
         {
@@ -56,7 +56,7 @@ namespace MRenderer
             mMutexTask.unlock();
 
             // notify a worker to execute task
-            mEventNewTask.notify_all();
+            mEventNewTask.notify_one();
 
             return ptr->get_future();
         }
@@ -135,9 +135,9 @@ namespace MRenderer
         }
 
         template<typename Fn, typename... Args>
-        void ExecuteOnWorker(Fn&& func, Args&&... args)
+        std::future<std::invoke_result_t<Fn, Args...>> ExecuteOnWorker(Fn&& func, Args&&... args)
         {
-            mWorkerThreads.Schedule(std::forward<Fn>(func), std::forward<Args>(args)...);
+            return mWorkerThreads.Schedule(std::forward<Fn>(func), std::forward<Args>(args)...);
         }
 
     private:
