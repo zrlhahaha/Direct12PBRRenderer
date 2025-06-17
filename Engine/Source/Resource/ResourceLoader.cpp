@@ -303,6 +303,9 @@ namespace MRenderer
             return std::nullopt;
         }
 
+        static int i = 0;
+        SaveToHDRFile(*image, std::format(L"{}{}{}", L"F:/dev/test", i++, L".hdr").data());
+
         return TextureData(
             BinaryData(image->pixels, size),
             static_cast<uint32>(image->width),

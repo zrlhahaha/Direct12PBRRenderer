@@ -34,6 +34,7 @@ namespace MRenderer
                 .Time = timer->TotalTime(),
             }
         );
+
         mCommandList->SetGrphicsConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
         mCommandList->SetComputeConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
 

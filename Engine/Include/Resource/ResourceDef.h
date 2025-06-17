@@ -77,8 +77,8 @@ namespace MRenderer
             swap(lhs.mData, rhs.mData);
         }
 
-        static void Serialize(RingBuffer&rb, const BinaryData& binary);
-        static void Deserialize(RingBuffer& rb, BinaryData& out);
+        static void BinarySerialize(RingBuffer&rb, const BinaryData& binary);
+        static void BinaryDeserialize(RingBuffer& rb, BinaryData& out);
 
     protected:
         uint32 mSize;
@@ -256,8 +256,8 @@ namespace MRenderer
         }
 
     public:
-        static void Serialize(RingBuffer& rb, const TextureData& texture_data);
-        static void Deserialize(RingBuffer& rb, TextureData& out_texture_data);
+        static void BinarySerialize(RingBuffer& rb, const TextureData& texture_data);
+        static void BinaryDeserialize(RingBuffer& rb, TextureData& out_texture_data);
 
         // theta: angle between y-axis phi: angle between x-axis
         static Vector4 SampleTextureCube(const std::array<TextureData, 6>& data, float theta, float phi);
@@ -409,6 +409,35 @@ namespace MRenderer
         }
 
     public:
+        template<typename T>
+        T Value()
+        {
+            if constexpr (std::is_same_v<T, float>)
+            {
+                ASSERT(mType == EShaderParameter_Vec1);
+                return mData.vec1;
+            }
+            else if constexpr (std::is_same_v<T, Vector2>)
+            {
+                ASSERT(mType == EShaderParameter_Vec2);
+                return mData.vec2;
+            }
+            else if constexpr (std::is_same_v<T, Vector3>)
+            {
+                ASSERT(mType == EShaderParameter_Vec3);
+                return mData.vec3;
+            }
+            else if constexpr (std::is_same_v<T, Vector4>)
+            {
+                ASSERT(mType == EShaderParameter_Vec4);
+                return mData.vec4;
+            }
+            else
+            {
+                static_assert(False<T>::value);
+            }
+        }
+
         static void JsonSerialize(nlohmann::json& json, const ShaderParameter& t);
         static void JsonDeserialize(nlohmann::json& json, ShaderParameter& t);
 
@@ -462,6 +491,7 @@ namespace MRenderer
         void SetTexture(std::string_view semantic_name, const std::shared_ptr<TextureResource>& texture_resource);
 
         inline ShadingState* GetShadingState() { return mShadingState.get(); };
+        ShaderParameter GetShaderParameter(const std::string& name);
 
         void PostSerialized() const;
         void PostDeserialized();

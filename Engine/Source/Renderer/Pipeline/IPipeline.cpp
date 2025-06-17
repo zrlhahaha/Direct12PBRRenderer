@@ -7,18 +7,22 @@ namespace MRenderer
 {
     void ShaderParameter::JsonSerialize(nlohmann::json& json, const ShaderParameter& t)
     {
-        uint32 num_elements = static_cast<uint32>(t.mType);
-        ASSERT(num_elements <= static_cast<uint32>(ShaderParameter::EShaderParameter_Total) && num_elements >= 0);
+        uint32 index = static_cast<uint32>(t.mType);
+        ASSERT(index <= static_cast<uint32>(ShaderParameter::EShaderParameter_Total) && index >= 0);
 
-        json = std::vector<float>(&t.mData.vec1, &t.mData.vec1 + num_elements);
+        // float or vector will all be considered as a list in json
+        json = std::vector<float>(&t.mData.vec1, &t.mData.vec1 + index);
     }
 
     void ShaderParameter::JsonDeserialize(nlohmann::json& json, ShaderParameter& t)
     {
         std::vector<float> staging = json;
 
+        // json list to vector or float
         memset(&t.mData, 0, sizeof(t.mData));
         memcpy(&t.mData, staging.data(), staging.size());
+
+        // size of the list = type of the element (EShaderParameter)
         t.mType = static_cast<ShaderParameter::EShaderParameter>(staging.size());
     }
 

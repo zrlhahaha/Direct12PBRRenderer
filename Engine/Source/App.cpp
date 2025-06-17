@@ -148,12 +148,12 @@ namespace MRenderer
             if (LOWORD(wParam) == WA_INACTIVE)
             {
                 mAppPaused = true;
-                mTimer.Pause(true);
+                //mTimer.Pause(true);
             }
             else
             {
                 mAppPaused = false;
-                mTimer.Pause(false);
+                //mTimer.Pause(false);
             }
             return 0;
 
@@ -219,7 +219,7 @@ namespace MRenderer
         case WM_ENTERSIZEMOVE:
             mAppPaused = true;
             mResizing = true;
-            mTimer.Pause(false);
+            //mTimer.Pause(false);
             return 0;
 
             // WM_EXITSIZEMOVE is sent when the user releases the resize bars.
@@ -227,7 +227,7 @@ namespace MRenderer
         case WM_EXITSIZEMOVE:
             mAppPaused = false;
             mResizing = false;
-            mTimer.Pause(true);
+            //mTimer.Pause(true);
             OnResize();
             return 0;
 
@@ -347,17 +347,22 @@ namespace MRenderer
         mTimer.Tick();
         if (!mPaused)
         {
-            mInput.EndMessage();
-            UpdateFrameStatus(mRenderScheduler->GetStatus());
+            constexpr uint32 FrameInterval = 1 / 144;
+            if (mTimer.DeltaTime() > FrameInterval)
+            {
 
-            auto future = TaskScheduler::Instance().ExecuteOnMainThread(
-                [&]()
-                {
-                    Update(mTimer);
-                    Render(mTimer);
-                }
-            );
-            future.wait();
+                mInput.EndMessage();
+                UpdateFrameStatus(mRenderScheduler->GetStatus());
+
+                auto future = TaskScheduler::Instance().ExecuteOnMainThread(
+                    [&]()
+                    {
+                        Update(mTimer);
+                        Render(mTimer);
+                    }
+                );
+                future.wait();
+            }
         }
     }
 
@@ -366,7 +371,7 @@ namespace MRenderer
         mPerfromRecord.FrameCount++;
 
         // Compute averages over one second period.
-        const float UpdateInterval = 1.0f;
+        const float UpdateInterval = 0.5f;
         if ((mTimer.TotalTime() - mPerfromRecord.TimeElapsed) >= UpdateInterval)
         {
             uint32 fps = static_cast<uint32>(mPerfromRecord.FrameCount / UpdateInterval);
@@ -381,7 +386,7 @@ namespace MRenderer
              
             // Reset for next average.
             mPerfromRecord.FrameCount = 1;
-            mPerfromRecord.TimeElapsed = mTimer.TotalTime();
+            mPerfromRecord.TimeElapsed += UpdateInterval;
         }
     }
 }

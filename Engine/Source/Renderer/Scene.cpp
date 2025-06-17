@@ -62,6 +62,16 @@ namespace MRenderer{
         SetRepoPath(repo_path);
     }
 
+    uint32 Scene::GetMeshCount() const
+    {
+        uint32 num = 0;
+        for (const auto& model : mSceneModel)
+        {
+            num += model->GetModel()->GetMeshResource()->mMeshData.GetSubMeshCount();
+        }
+        return num;
+    }
+
     void Scene::SetSkyBox(const std::shared_ptr<CubeMapResource>& res)
     {
         mSkyBox = res;

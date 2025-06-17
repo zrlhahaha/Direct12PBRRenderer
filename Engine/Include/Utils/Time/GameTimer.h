@@ -9,29 +9,25 @@ namespace MRenderer
     {
     public:
         GameTimer()
+            :mPerformanceFrequency(0.0F), mBaseCounter(0), mDeltaCounter(0), mLastCounter(0)
         {
             LARGE_INTEGER frequency;
             assert(QueryPerformanceFrequency(&frequency));
             mPerformanceFrequency = 1.0F / frequency.QuadPart;
+
+            LARGE_INTEGER counter;
+            assert(QueryPerformanceCounter(&counter));
+            mBaseCounter = mLastCounter = counter.QuadPart;
         }
 
         float DeltaTime() const
         {
-            return mDeltaTime;
+            return mDeltaCounter * mPerformanceFrequency;
         }
 
         float TotalTime() const
         {
-            return mTotalTime;
-        }
-
-        void Pause(bool state)
-        {
-            mPaused = state;
-
-            LARGE_INTEGER counter;
-            assert(QueryPerformanceCounter(&counter));
-            mLastCounter = counter.QuadPart;
+            return (mLastCounter - mBaseCounter) * mPerformanceFrequency;
         }
 
         void Tick()
@@ -39,17 +35,16 @@ namespace MRenderer
             LARGE_INTEGER counter;
             assert(QueryPerformanceCounter(&counter));
 
-            mDeltaTime = max((counter.QuadPart - mLastCounter) * mPerformanceFrequency, 0);
-            mTotalTime += mDeltaTime;
+            mDeltaCounter = Max(counter.QuadPart - mLastCounter, 0);
             mLastCounter = counter.QuadPart;
+
+            // Log(TotalTime());
         }
 
     private:
         float mPerformanceFrequency;
-        float mDeltaTime = 0.0F;
-        float mTotalTime = 0.0F;
-
-        INT64 mLastCounter = 0;
-        bool mPaused = false;
+        INT64 mBaseCounter;
+        INT64 mDeltaCounter;
+        INT64 mLastCounter;
     };
 }

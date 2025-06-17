@@ -4,14 +4,17 @@ Texture2D BaseColorMap : register(t0);
 Texture2D NormalMap : register(t1);
 Texture2D MixedMap : register(t2);
 
-cbuffer ShaderConstant : register(ShaderConstantBufferRegister)
+cbuffer ShaderConstant : register(CONSTANT_BUFFER_REGISTER_SHADER)
 {
 }
 
-cbuffer InstanceConstant : register(InstanceConstantBufferRegister)
+cbuffer InstanceConstant : register(CONSTANT_BUFFER_REGISTER_INSTANCE)
 {
     float4x4 Model;
     float4x4 InvModel;
+    float Roughness;
+    float Metallic;
+    bool UseMixedMap;
 }
 
 struct PSInput
@@ -70,12 +73,19 @@ GBuffer ps_main(PSInput input)
     float3 normal_ws = mul(transpose(InvModel), float4(normal_os, 0)).xyz;
 
     output.GBufferA = float4(decode_gamma(BaseColorMap.Sample(SamplerLinearWrap, input.uv).rgb), 0);
-    // output.GBufferA = float4(float3(1,1,1), 0);
     output.GBufferB = float4(pack_normal(normalize(input.normal_ws)), 1, 0);
 
-    // every asset comes from https://www.fab.com/listings/4da78da6-44b3-4adf-8883-219fe17b44d4
-    // accroding to the shadergraph, the mixed map is composed of [ambient occlusion, roughness, metallic, 0]
-    float4 mixed = MixedMap.Sample(SamplerLinearWrap, input.uv);
-    output.GBufferC = float4(mixed.g, mixed.b, mixed.a, 0);
+    if(UseMixedMap)
+    {
+        // every asset comes from https://www.fab.com/listings/4da78da6-44b3-4adf-8883-219fe17b44d4
+        // accroding to the shadergraph, the mixed map is composed of [ambient occlusion, roughness, metallic, 0]
+        float4 mixed = MixedMap.Sample(SamplerLinearWrap, input.uv);
+        output.GBufferC = float4(mixed.g, mixed.b, mixed.a, 0);
+    }
+    else
+    {
+        output.GBufferC = float4(Roughness, Metallic, 0, 0);
+    }
+
     return output;
 }

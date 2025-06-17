@@ -3,11 +3,11 @@
 
 #define PI 3.14159265359
 #define INV_PI 0.31830988618
-#define PrefilterEnvMapMipSize 5
 
-#define ShaderConstantBufferRegister b0
-#define InstanceConstantBufferRegister b1
-#define GlobalsConsantBufferRegister b2
+#define PREFILTER_ENVMAP_MIPMAP_SIZE 5u
+#define CONSTANT_BUFFER_REGISTER_SHADER b0
+#define CONSTANT_BUFFER_REGISTER_INSTANCE b1
+#define CONSTANT_BUFFER_REGISTER_GLOBAL b2
 
 
 SamplerState SamplerPointWrap           : register(s0);
@@ -148,45 +148,4 @@ float3 unpack_normal(float2 normal)
 {
     return normalize(decode_octahedron(normal));
 }
-
-// Hammersley low-discrepancy sequences
-// from: https://learnopengl.com/PBR/IBL/Specular-IBL
-float RadicalInverse_VdC(uint bits) 
-{
-    bits = (bits << 16u) | (bits >> 16u);
-    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
-}
-
-float2 hammersley(uint i, uint N)
-{
-    return float2(float(i)/float(N), RadicalInverse_VdC(i));
-}  
-
-// generate random microfacet normal
-float3 ggx_important_sample(float roughness, float3 normal, float2 xi)
-{
-    // xi is uniform random number distributed in [0, 1]
-    // ggx only matter to theta, so we will generate phi uniformly on [0, 2 * PI]
-    // we will generate theta by substituting xi.y into inverse function of ggx CDF
-    // ref: https://agraphicsguynotes.com/posts/sample_microfacet_brdf/
-    float phi = xi.x * 2 * PI;
-    float theta = atan(roughness * sqrt(xi.y / (1 - xi.y)));
-
-    // convert tangent space spherical coordinates to world space normal
-    float sin_theta = sin(theta);
-    float3 h = float3(sin_theta * cos(phi), sin_theta * sin(phi), cos(theta));
-
-    // transform normal from tangent space to world space
-    // tangent space is composed by tanget_x, tangent_y, normal
-    // assume up_vector to be (0, 0, 1) if normal is not roughly parallel to (0, 0, 1), otherwise (1, 0, 0)
-    float3 up_vector = abs(h.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
-    float3 tangent = normalize(cross(h, up_vector));
-    float3 bitangent = cross(normal, tangent);
-    return tangent * h.x + bitangent * h.y + normal * h.z;
-}
-
 #endif

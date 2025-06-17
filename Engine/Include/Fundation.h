@@ -29,6 +29,7 @@ namespace MRenderer
     constexpr uint32 ShaderResourceMaxTexture = 8;
     constexpr uint32 ShaderResourceMaxSampler = 6;
     constexpr uint32 ShaderResourceMaxUAV = 8;
+    constexpr uint32 NumCubeMapFaces = 6;
 
     constexpr const char* ShaderFolderPath = "Shader";
     constexpr const wchar_t* LShaderFolderPath = L"Shader";

@@ -3,6 +3,7 @@
 #include "Utils/Serialization.h"
 #include "Resource/Shader.h"
 #include "Resource/ResourceLoader.h"
+#include "Resource/TextureCompression.h"
 #include "Renderer/Device/Direct12/D3D12Device.h"
 #include "Resource/json.hpp"
 #include "format"
@@ -49,13 +50,13 @@ namespace MRenderer
         return *this;
     }
 
-    void BinaryData::Serialize(RingBuffer& rb, const BinaryData& binary)
+    void BinaryData::BinarySerialize(RingBuffer& rb, const BinaryData& binary)
     {
         rb.Write(binary.mSize);
         rb.Write(reinterpret_cast<const unsigned char*>(binary.mData), binary.mSize);
     }
 
-    void BinaryData::Deserialize(RingBuffer& rb, BinaryData& out)
+    void BinaryData::BinaryDeserialize(RingBuffer& rb, BinaryData& out)
     {
         uint32 size = rb.Read<uint32>();
         const void* buffer = rb.Read(size);
@@ -127,78 +128,34 @@ namespace MRenderer
         }
     }
 
-    void TextureData::Serialize(RingBuffer& rb, const TextureData& texture_data)
+    void TextureData::BinarySerialize(RingBuffer& rb, const TextureData& texture_data)
     {
-        // compressed as BC 1
-        DirectX::ScratchImage raw_image;
-        ThrowIfFailed(
-            raw_image.Initialize2D(static_cast<DXGI_FORMAT>(texture_data.mInfo.Format),
-                texture_data.mInfo.Width,
-                texture_data.mInfo.Height,
-                1,
-                1
-            )
+        TextureCompressor::Instance()->Compress(static_cast<const uint8*>(texture_data.mData.GetData()), texture_data.mInfo.Width, texture_data.mInfo.Height, texture_data.mInfo.Format,
+            [&](uint32 size, const uint8* data)
+            {
+                BinarySerialization::Serialize(rb, texture_data.mInfo);
+                rb.Write<uint32>(size);
+                rb.Write(data, size);
+            }
         );
-        
-        const DirectX::Image* image_slice = raw_image.GetImage(0, 0, 0);
-        memcpy(image_slice->pixels, texture_data.mData.GetData(), texture_data.mData.GetSize());
-
-        DirectX::ScratchImage compressed;
-        ThrowIfFailed(
-            DirectX::Compress(
-                raw_image.GetImages(),
-                raw_image.GetImageCount(),
-                raw_image.GetMetadata(),
-                DXGI_FORMAT_BC1_UNORM,
-                DirectX::TEX_COMPRESS_DEFAULT,
-                1.0f,
-                compressed
-            )
-        );
-
-        BinarySerialization::Serialize(rb, texture_data.mInfo);
-
-        uint32 compressed_size = static_cast<uint32>(compressed.GetPixelsSize());
-        rb.Write<uint32>(compressed_size);
-        rb.Write(compressed.GetPixels(), compressed_size);
     }
 
-    void TextureData::Deserialize(RingBuffer& rb, TextureData& out_texture_data)
+    void TextureData::BinaryDeserialize(RingBuffer& rb, TextureData& out_texture_data)
     {
         BinarySerialization::Deserialize(rb, out_texture_data.mInfo);
+
         uint32 compressed_size = rb.Read<uint32>();
-        const void* pixels = rb.Read(compressed_size);
+        const uint8* pixels = rb.Read(compressed_size);
 
-        DirectX::ScratchImage compressed;
-        ThrowIfFailed(
-            compressed.Initialize2D(
-                DXGI_FORMAT_BC1_UNORM,
-                out_texture_data.mInfo.Width,
-                out_texture_data.mInfo.Height,
-                1,
-                1
-            )
+        TextureCompressor::Instance()->Decompress(pixels, out_texture_data.mInfo.Width, out_texture_data.mInfo.Height, out_texture_data.mInfo.Format,
+            [&](uint32 size, const uint8* data)
+            {
+                out_texture_data.mData = BinaryData(data, size);
+            }
         );
-
-        memcpy(compressed.GetPixels(), pixels, compressed_size);
-
-        DirectX::ScratchImage raw_image;
-        ThrowIfFailed(
-            DirectX::Decompress(
-                compressed.GetImages(),
-                compressed.GetImageCount(),
-                compressed.GetMetadata(),
-                static_cast<DXGI_FORMAT>(out_texture_data.mInfo.Format),
-                raw_image
-            )
-        );
-
-        const DirectX::Image* image_slice = raw_image.GetImage(0, 0, 0);
-        out_texture_data.mData = BinaryData(image_slice->pixels, static_cast<uint32>(image_slice->slicePitch));
     }
 
     // theta: angle between y-axis phi: angle between x-axis
-
     Vector4 TextureData::SampleTextureCube(const std::array<TextureData, 6>& data, float theta, float phi)
     {
         Vector2 tc;
@@ -257,6 +214,19 @@ namespace MRenderer
             mTextureData.mInfo.Format,
             mTextureData.mData.GetData()
         );
+    }
+
+    ShaderParameter MaterialResource::GetShaderParameter(const std::string& name) 
+    { 
+        auto it = mParameterTable.find(name);
+        if (it == mParameterTable.end()) 
+        {
+            return ShaderParameter();
+        }
+        else
+        {
+            return it->second;
+        }
     }
 
     void MaterialResource::PostSerialized() const

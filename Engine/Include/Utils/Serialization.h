@@ -10,19 +10,11 @@
 
 namespace MRenderer 
 {
-    // check if @T is able to be serialized and deserialized
-    // this requires that T is some common type, or it's registered in the ReflectionDef.h, or it implements Serialize and Deserialize function
-    template<typename T>
-    concept Serializable = requires(T t, RingBuffer & rb) {
-        Serialize(rb, t);
-        Deserialize<T>(rb, t);
-    };
-
     // check if @T has custom binary serialization and deserialization function
     template<typename T>
     concept CustomBinarytSerializable = requires(T& t, RingBuffer rb) {
-        T::Serialize(rb, const_cast<const T&>(t));
-        T::Deserialize(rb, t);
+        T::BinarySerialize(rb, const_cast<const T&>(t));
+        T::BinaryDeserialize(rb, t);
     };
 
     // check if @T has custom json serialization and deserialization function
@@ -97,14 +89,14 @@ namespace MRenderer::BinarySerialization
         requires CustomBinarytSerializable<T>
     void Serialize(RingBuffer& rb, const T& t)
     {
-        T::Serialize(rb, t);
+        T::BinarySerialize(rb, t);
     }
 
     template<typename T>
         requires CustomBinarytSerializable<T>
     void Deserialize(RingBuffer& rb, T& t)
     {
-        T::Deserialize(rb, t);
+        T::BinaryDeserialize(rb, t);
     }
 
     // for std::string std::vector

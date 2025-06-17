@@ -31,6 +31,7 @@ set(SOURCE_FILES
     ${SOURCE_DIR}/Resource/ResourceDef.cpp
     ${SOURCE_DIR}/Resource/DefaultResource.cpp
     ${SOURCE_DIR}/Resource/Shader.cpp
+    ${SOURCE_DIR}/Resource/TextureCompression.cpp
     ${SOURCE_DIR}/Resource/tiny_obj_loader.cc
     ${SOURCE_DIR}/Utils/Console.cpp
     ${SOURCE_DIR}/Utils/Thread.cpp
@@ -80,6 +81,7 @@ set(HEADER_FILES
     ${INCLUDE_DIR}/Resource/VertexLayout.h
     ${INCLUDE_DIR}/Resource/Shader.h
     ${INCLUDE_DIR}/Resource/json.hpp
+    ${INCLUDE_DIR}/Resource/TextureCompression.h
 )
 
 target_sources(${TARGET_NAME}
@@ -110,7 +112,7 @@ target_include_directories(${TARGET_NAME}
 
 # link to directxtex, dxc and d3d3 lib files
 # since this is a lib file, all dependencies will be specified as PUBLIC
-set(D3D12_LIB d3dcompiler D3D12 dxguid dxgi ${DXCOMPILER_TARGET})
+set(D3D12_LIB d3dcompiler D3D12 D3D11 dxguid dxgi ${DXCOMPILER_TARGET})
 
 target_link_libraries(${TARGET_NAME} PUBLIC ${D3D12_LIB})
 

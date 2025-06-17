@@ -12,13 +12,13 @@ namespace MRenderer
         static constexpr std::string_view Output_PrefilterEnvMap = "PrefilterEnvMap";
 
     public:
-        // smallest mip size is 8x8, this must be the same as the value that compute shader numthreads declared, which is 8x8x6
-        // each threadgroup will process 8x8x6 pixels in an array slice of the cube map
-        static const uint32 PreFilterEnvMapSize = 512;
-        static const uint32 PreFilterEnvMapMipsLevel = 6;
-        
-        // i.e 8, same as the smallest mip size
-        static const uint32 DispatchGroupSize = 512 >> PreFilterEnvMapMipsLevel;
+        static constexpr uint32 PreFilterEnvMapSize = 512;
+        static constexpr uint32 PreFilterEnvMapMipsLevel = 5;
+        static constexpr uint32 DispatchGroupSize = 8;
+        static constexpr uint32 MinimumMipSize = PreFilterEnvMapSize >> (PreFilterEnvMapMipsLevel - 1);
+
+        // we assert that the smallest mip size is the a multiple of the @DispatchGroupSize, so we don't need to do the size check in compute shader
+        static_assert((MinimumMipSize % DispatchGroupSize == 0 ) && (MinimumMipSize > DispatchGroupSize));
 
         struct ConstantBuffer
         {
@@ -31,7 +31,7 @@ namespace MRenderer
         PreFilterEnvMapPass()
             :mReady(false)
         {
-            mPrefilterEnvMap = GD3D12Device->CreateTextureCube(PreFilterEnvMapSize, PreFilterEnvMapSize, PreFilterEnvMapMipsLevel, ETextureFormat_R8G8B8A8_UNORM, nullptr, true);
+            mPrefilterEnvMap = GD3D12Device->CreateTextureCube(PreFilterEnvMapSize, PreFilterEnvMapSize, PreFilterEnvMapMipsLevel, ETextureFormat_R16G16B16A16_FLOAT, nullptr, true);
         }
 
         void Connect()
@@ -64,7 +64,7 @@ namespace MRenderer
         PrecomputeBRDFPass()
             : mReady(false)
         {
-            mPrecomputeBRDF = GD3D12Device->CreateTexture2D(512, 512, ETextureFormat_R8G8_UNORM, nullptr, true);
+            mPrecomputeBRDF = GD3D12Device->CreateTexture2D(512, 512, ETextureFormat_R16G16B16A16_FLOAT, nullptr, true);
 
             mShadingState.SetShader("precompute_brdf.hlsl", true);
             mShadingState.SetRWTexture("PrecomputeBRDF", mPrecomputeBRDF.get());
@@ -312,7 +312,9 @@ namespace MRenderer
             : mLuminanceTexture(nullptr)
         {
             mLuminanceHistogram = GD3D12Device->CreateStructuredBuffer(HistogramBinSize * sizeof(uint32), sizeof(uint32));
-            mAverageLuminance = GD3D12Device->CreateStructuredBuffer(1 * sizeof(float), sizeof(float));
+
+            float initial_avg_luminance = 0;
+            mAverageLuminance = GD3D12Device->CreateStructuredBuffer(1 * sizeof(float), sizeof(float), &initial_avg_luminance);
         }
 
         void Connect(SkyboxPass* skybox_pass);

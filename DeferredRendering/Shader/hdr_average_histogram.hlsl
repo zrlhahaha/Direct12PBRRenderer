@@ -1,6 +1,7 @@
 #include "global.hlsli"
 
 #define NUM_HISTOGRAM_BINS 256
+#define SMOOTH_TIME 1.6
 
 // compute the average luminance of @LuminanceTexture
 // ref https://www.alextardif.com/HistogramLuminance.html
@@ -64,8 +65,9 @@ void cs_main(uint3 gtid : SV_GroupThreadID)
         float luminance = BinIndexToLuminance(average_bin); // [0, 1]
 
         // lerp the average luminance with the last frame luminance to get the final result.
+        // exp(DelteTime) prevents the average luminance from changing too fast if the DeltaTime is to large, e.g screen is frozen for a while
+        // https://www.desmos.com/calculator/fguxmvdcqr
         float prev_luminance = AverageLuminance[0];
-        float time_coeff = saturate(1 - exp(-DeltaTime)); // question: why use base-e exponential as time coefficent ?
-        AverageLuminance[0] = lerp(prev_luminance, luminance, time_coeff);
+        AverageLuminance[0] = lerp(prev_luminance, luminance, saturate((1 - exp(-DeltaTime * SMOOTH_TIME)))); 
     }
 }

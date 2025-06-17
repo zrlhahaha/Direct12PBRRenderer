@@ -67,7 +67,6 @@ namespace MRenderer
 
     void PreFilterEnvMapPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
     {
-
         // generate prefilter cubemap of skybox
         // this pass only need to be executed one time
         if (!mReady) 
@@ -101,32 +100,32 @@ namespace MRenderer
                 uint32 mip_size = PreFilterEnvMapSize >> i;
                 uint32 thread_group_num = (mip_size + DispatchGroupSize - 1) / DispatchGroupSize;
 
-                cmd->Dispatch(&mShadingState[i], thread_group_num, thread_group_num, 6);
+                cmd->Dispatch(&mShadingState[i], thread_group_num, thread_group_num, NumCubeMapFaces);
             }
         }
     }
 
     void PrecomputeBRDFPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
     {
-        PIXScope(cmd, "Precompute BRDF Pass");
-
-        constexpr uint32 ThreadGroupSize = 8;
-        constexpr uint32 ThreadGroupCount = 512 / ThreadGroupSize;
-
-        ConstantBuffer cbuffer =
-        {
-            .TextureResolution = TextureResolution
-        };
-
-        mShadingState.SetConstantBuffer(cbuffer);
-
         if (!mReady)
         {
             mReady = true;
+
+            PIXScope(cmd, "Precompute BRDF Pass");
+
+            constexpr uint32 ThreadGroupSize = 8;
+            constexpr uint32 ThreadGroupCount = 512 / ThreadGroupSize;
+
+            ConstantBuffer cbuffer =
+            {
+                .TextureResolution = TextureResolution
+            };
+
+            mShadingState.SetConstantBuffer(cbuffer);
             cmd->Dispatch(&mShadingState, ThreadGroupCount, ThreadGroupCount, 1);
         }
     }
-
+     
     void GBufferPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
     {
         PIXScope(cmd, "Gbuffer Pass");
@@ -141,28 +140,38 @@ namespace MRenderer
             }
         );
 
-        mCullingStatus.NumCulled = scene->GetModelCount() - mCullingStatus.NumDrawCall;
+        mCullingStatus.NumCulled = scene->GetMeshCount() - mCullingStatus.NumDrawCall;
     }
 
     void GBufferPass::DrawModel(D3D12CommandList* cmd, SceneModel* obj)
     {
-        // update per object constant buffer
-        obj->CommitConstantBuffer();
-        cmd->SetGrphicsConstant(EConstantBufferType_Instance, obj->GetConstantBuffer()->GetCurrendConstantBufferView());
-
         MeshResource* mesh = obj->GetModel()->GetMeshResource();
         const MeshData& mesh_data = mesh->GetMeshData();
-
+        
         // issue draw call
         for (uint32 i = 0; i < mesh_data.GetSubMeshCount(); i++)
         {
             mCullingStatus.NumDrawCall++;
 
-            // setup PSO
+            // update per object constant buffer
             MaterialResource* material = obj->GetModel()->GetMaterial(i);
+            ConstantBufferInstance cb =
+            {
+                .Model = obj->GetWorldMatrix(),
+                .InvModel = obj->GetWorldMatrix().Inverse(),
+                .Roughness = material->GetShaderParameter("Roughness").Value<float>(),
+                .Metallic = material->GetShaderParameter("Metallic").Value<float>(),
+                .UseMixedMap = false,
+            };
+
+            obj->GetConstantBuffer()->CommitData(cb);
+            cmd->SetGrphicsConstant(EConstantBufferType_Instance, obj->GetConstantBuffer()->GetCurrendConstantBufferView());
+
+            // setup PSO
             ShadingState* shading_state = material->GetShadingState();
             cmd->SetGraphicsPipelineState(mesh_data.GetFormat(), &mPipelineStateDesc, GetPassStateDesc(), shading_state->GetShader());
             
+            // issue drawcall
             const SubMeshData& sub_mesh = mesh_data.GetSubMesh(i);
             cmd->DrawMesh(shading_state, mesh_data.GetFormat(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), sub_mesh.Index, sub_mesh.IndicesCount);
         }

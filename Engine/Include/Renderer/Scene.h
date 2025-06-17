@@ -27,18 +27,6 @@ namespace MRenderer
         inline Vector3 GetRotation() const { return mRotation; }
         inline Vector3 GetScale() const { return mScale; }
 
-
-        void CommitConstantBuffer() 
-        {
-            ConstantBufferInstance cb =
-            {
-                .Model = mModelMatrix,
-                .InvModel = mModelMatrix.Inverse()
-            };
-
-            mConstantBuffer->CommitData(cb);
-        }
-
         void SetWorldMatrix(const Matrix4x4& matrix)
         {
             mModelMatrix = matrix;
@@ -164,6 +152,8 @@ namespace MRenderer
         
         inline uint32 GetModelCount() const { return static_cast<uint32>(mSceneModel.size()); }
         inline uint32 GetLightCount() const { return static_cast<uint32>(mSceneLight.size()); }
+
+        uint32 GetMeshCount() const;
 
         template<typename... Args>
         SceneModel* AddSceneModel(std::string_view name, Args&&... args)

@@ -175,6 +175,9 @@ namespace MRenderer
     {
         Matrix4x4 Model;
         Matrix4x4 InvModel;
+        float Roughness;
+        float Metallic;
+        bool UseMixedMap;
     };
 
     // a class contains shader, texturex, constant buffer for a draw call

@@ -43,12 +43,15 @@ float3 EnvironmentSpecular(float3 N, float3 V, float3 F0, float roughness)
 {
     float NdotV = max(dot(N, V), 0);
     float3 R = normalize(2 * dot(N, V) * N - V);
-    float3 env_irradiance = PrefilterEnvMap.SampleLevel(SamplerPointWrap, R, roughness * PrefilterEnvMapMipSize).rgb;
+    float3 env_irradiance = PrefilterEnvMap.SampleLevel(SamplerPointWrap, R, roughness * PREFILTER_ENVMAP_MIPMAP_SIZE).rgb;
     float2 env_brdf = PrecomputeBRDF.Sample(SamplerLinearClamp, float2(roughness, NdotV)).rg;
 
     // evaluate the split-sum equation
-    // ref: https://zhuanlan.zhihu.com/p/162793239 "预计算BRDF"
+    // ref: https://zhuanlan.zhihu.com/p/162793239 
     // ref: https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf eq.8
+
+    // somehow learnopengl.com use schlick-fresnel rather than F0, 
+    // ref: https://learnopengl.com/PBR/IBL/Specular-IBL
     return env_irradiance * (F0 * env_brdf.x + env_brdf.y);
 }
 
@@ -131,5 +134,5 @@ float4 ps_main(PSInput input) : SV_TARGET
     float3 direct_color = brdf(brdf_input) * light_color * max(dot(normal_ws, light_dir_ws), 0.0);
     float3 direct_luminance = direct_color * light_luminance;
 
-    return float4(encode_gamma(env_diffuse + env_specular /*+ direct_color*/), 1);
+    return float4(env_diffuse + env_specular, 1);
 }

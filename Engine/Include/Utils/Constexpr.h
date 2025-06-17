@@ -143,4 +143,17 @@ namespace MRenderer
     {
         return aggragate_initialize_impl<T>(args, std::make_index_sequence<Size>());
     }
+
+    // value false that depend on template parameter for delay instantiation
+    template<typename T>
+    struct False 
+    {
+        static bool constexpr value = false;
+    };
+
+    template<typename T>
+    struct True
+    {
+        static bool constexpr value = false;
+    };
 }
