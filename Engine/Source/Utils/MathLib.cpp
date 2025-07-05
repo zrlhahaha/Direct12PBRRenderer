@@ -54,6 +54,16 @@ namespace MRenderer
         ret(2, 3) = (near_z * far_z) / (near_z - far_z);
         ret(3, 2) = 1;
 
+        auto row0 = ret.GetRow(0);
+        auto row1 = ret.GetRow(1);
+        auto row2 = ret.GetRow(2);
+        auto row3 = ret.GetRow(3);
+
+        auto col0 = ret.GetColumn(0);
+        auto col1 = ret.GetColumn(1);
+        auto col2 = ret.GetColumn(2);
+        auto col3 = ret.GetColumn(3);
+
         return ret;
     }
 

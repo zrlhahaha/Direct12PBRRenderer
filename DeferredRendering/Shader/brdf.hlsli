@@ -3,7 +3,7 @@
 
 // defination of D F G term in brdf equation
 // ref: https://learnopengl.com/PBR/Theory
-float gtr2(float NdotH, float roughness)
+float distribution_ggx(float NdotH, float roughness)
 {
     float a = roughness * roughness;
     float t = (NdotH * NdotH) * (a * a - 1.0) + 1.0;
@@ -55,7 +55,7 @@ float3 brdf(BRDFInput input)
     float3 F0 = compute_F0(input.Albedo, input.Metallic);
     float3 F = fresnel(NdotL, F0);
 
-    float D = gtr2(NdotH, input.Roughness);
+    float D = distribution_ggx(NdotH, input.Roughness);
 
     float k = (input.Roughness + 1) * (input.Roughness + 1) / 8;
     float G = geometry_smith(NdotL, NdotV, k);

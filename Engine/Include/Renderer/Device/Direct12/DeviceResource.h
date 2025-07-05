@@ -2,34 +2,16 @@
 #include <array>
 #include "MemoryAllocator.h"
 #include "DescriptorAllocator.h"
+#include "Resource/BasicStorage.h"
 
 namespace MRenderer
 {
-    // same as DXGI_FORMAT
-    // note: TextureDate::BinarySerialze assume the format between [DXGI_FORMAT_R32G32B32A32_TYPELESS(1), DXGI_FORMAT_R32G32_SINT(18)] is HDR image
-    // and will use DXGI_FORMAT_BC6H_UF16 to compress the image
-    enum ETextureFormat : uint8
-    {
-        ETextureFormat_None = 0,
-        ETextureFormat_R32G32B32A32_TYPELESS = 1,
-        ETextureFormat_R32G32B32A32_FLOAT = 2,
-        ETextureFormat_R16G16B16A16_FLOAT = 10,
-        ETextureFormat_R16G16B16A16_UNORM = 11,
-        ETextureFormat_R32G32_SINT = 18,
-        ETextureFormat_FORMAT_R10G10B10A2_UNORM = 24,
-        ETextureFormat_R8G8B8A8_UNORM = 28,
-        ETextureFormat_R16G16_UNORM = 35,
-        ETextureFormat_R8G8_UNORM = 49,
-        ETextureFormat_R8_UNORM = 61,
-        ETextureFormat_DepthStencil = 100,
-    };
-
     // same as D3D12_FILTER
     enum ESamplerFilter : uint8
     {
-        ESamplerFilter_Point = 0,
-        ESamplerFilter_Linear = 0x15,
-        ESamplerFilter_Anisotropic = 0x55,
+        ESamplerFilter_Point = 0, // D3D12_FILTER_MIN_MAG_MIP_POINT, point sample
+        ESamplerFilter_Linear = 0x15, // D3D12_FILTER_MIN_MAG_MIP_LINEAR, trillinear sampler
+        ESamplerFilter_Anisotropic = 0x55, // D3D12_FILTER_ANISOTROPIC
     };
 
     // same as D3D12_TEXTURE_ADDRESS_MODE
@@ -41,23 +23,6 @@ namespace MRenderer
         ESamplerAddressMode_Border = 4,
         ESamplerAddressMode_MirrorOnce = 5,
     };
-
-    inline uint32 GetChannelCount(ETextureFormat format) 
-    {
-        switch (format)
-        {
-            case MRenderer::ETextureFormat_R16G16B16A16_UNORM:
-            case MRenderer::ETextureFormat_R8G8B8A8_UNORM:
-                return 4;
-            case MRenderer::ETextureFormat_R8G8_UNORM:
-                return 2;
-            case MRenderer::ETextureFormat_R8_UNORM:
-                return 1;
-            default:
-                return 0;
-        }
-        return format;
-    }
 
     // for d3d12 resource RAII management, state tracking and keeping mapped pointer
     class D3D12Resource
@@ -265,6 +230,8 @@ namespace MRenderer
 
             mWidth = static_cast<uint32>(desc.Width);
             mHeight = static_cast<uint32>(desc.Height);
+            mDepth = static_cast<uint32>(desc.DepthOrArraySize);
+            mMipLevels = static_cast<uint32>(desc.MipLevels);
             mTextureFormat = static_cast<ETextureFormat>(desc.Format);
         }
         DeviceTexture(DeviceTexture&& other) = default;
@@ -278,14 +245,16 @@ namespace MRenderer
         inline ShaderResourceView* GetShaderResourceView() { ASSERT(!mShaderResourceView.Empty()); return &mShaderResourceView; }
         inline UnorderAccessView* GetUnorderedResourceView() { ASSERT(!mUnorderedAccessView.Empty());  return &mUnorderedAccessView; }
         inline const ETextureFormat Format() const { return mTextureFormat; }
-        inline uint32 TextureWidth() const { return mWidth; }
-        inline uint32 TextureHeight() const { return mHeight; }
+        inline uint32 Width() const { return mWidth; }
+        inline uint32 Height() const { return mHeight; }
+        inline uint32 Depth() const { return mDepth; }
+        inline uint32 MipLevels() const { return mMipLevels; }
 
     protected:
         D3D12Resource mTextureResource;
         ShaderResourceView mShaderResourceView;
         UnorderAccessView mUnorderedAccessView;
-        uint32 mWidth, mHeight;
+        uint32 mWidth, mHeight, mDepth, mMipLevels;
         ETextureFormat mTextureFormat;
     };
 
@@ -302,13 +271,11 @@ namespace MRenderer
     class DeviceTexture2DArray : public DeviceTexture
     {
     public:
-        DeviceTexture2DArray(D3D12Resource resource, uint32 mip_size);
+        DeviceTexture2DArray(D3D12Resource resource);
         DeviceTexture2DArray(DeviceTexture2DArray&& other) = default;
 
-        void UpdateArraySlice(uint32 index, const void* data, uint32 size);
-
-        inline const uint32 MipSize() const { return mMipSize; }
-        inline UnorderAccessView* GetUnorderedAccessView(uint32 index) { ASSERT(index < MipSize() && !mUnorderedAccessViewArray[index].Empty()); return &mUnorderedAccessViewArray[index]; }
+        inline const uint32 ArraySize() const { return mDepth; }
+        inline UnorderAccessView* GetUnorderedAccessView(uint32 index) { ASSERT(index < MipLevels() && !mUnorderedAccessViewArray[index].Empty()); return &mUnorderedAccessViewArray[index]; }
         inline void SetUnorderedAccessView(int32 index, UnorderAccessView uav) { mUnorderedAccessViewArray[index] = std::move(uav); }
 
     private:
@@ -318,8 +285,6 @@ namespace MRenderer
     protected:
         // each descriptor is a mip slice of texture2d array
         std::vector<UnorderAccessView> mUnorderedAccessViewArray;
-        uint32 mSliceSize;
-        uint32 mMipSize;
     };
 
     class DeviceRenderTarget : public DeviceTexture2D

@@ -43,8 +43,8 @@ namespace MRenderer
     {
         static MeshData mesh = DefaultResource::StandardSphereMesh();
 
-        mBoxIndexBuffer = GD3D12Device->CreateIndexBuffer(mesh.IndiciesData(), static_cast<uint32>(mesh.IndiciesCount() * sizeof(IndexType)));
-        mBoxVertexBuffer = GD3D12Device->CreateVertexBuffer(mesh.VerticesData(), static_cast<uint32>(mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>)), sizeof(Vertex<SkyBoxMeshFormat>));
+        mBoxIndexBuffer = GD3D12Device->CreateIndexBuffer(mesh.IndiciesData(), mesh.IndiciesCount() * sizeof(IndexType));
+        mBoxVertexBuffer = GD3D12Device->CreateVertexBuffer(mesh.VerticesData(), mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>), sizeof(Vertex<SkyBoxMeshFormat>));
     }
 
     void SkyboxPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
@@ -155,20 +155,19 @@ namespace MRenderer
 
             // update per object constant buffer
             MaterialResource* material = obj->GetModel()->GetMaterial(i);
-            ConstantBufferInstance cb =
-            {
-                .Model = obj->GetWorldMatrix(),
-                .InvModel = obj->GetWorldMatrix().Inverse(),
-                .Roughness = material->GetShaderParameter("Roughness").Value<float>(),
-                .Metallic = material->GetShaderParameter("Metallic").Value<float>(),
-                .UseMixedMap = false,
-            };
+            ShadingState* shading_state = material->GetShadingState();
+
+            ConstantBufferInstance cb = {};
+
+            // copy shader parameters from parameter table to constant buffer
+            material->ApplyShaderParameter(cb, shading_state->GetShader(), ConstantBufferInstance::SemanticName);
+            cb.Model = obj->GetWorldMatrix(),
+            cb.InvModel = obj->GetWorldMatrix().Inverse(),
 
             obj->GetConstantBuffer()->CommitData(cb);
             cmd->SetGrphicsConstant(EConstantBufferType_Instance, obj->GetConstantBuffer()->GetCurrendConstantBufferView());
 
             // setup PSO
-            ShadingState* shading_state = material->GetShadingState();
             cmd->SetGraphicsPipelineState(mesh_data.GetFormat(), &mPipelineStateDesc, GetPassStateDesc(), shading_state->GetShader());
             
             // issue drawcall
@@ -278,6 +277,7 @@ namespace MRenderer
         {
             PIXScope(cmd, "Luminance Histogram Pass");
 
+            mLuminanceHistogram->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
             mLuminanceHistogramCompute.SetRWStructuredBuffer("LuminanceHistogram", mLuminanceHistogram.get());
             mLuminanceHistogramCompute.SetTexture(LuminanceHistogramShader::LuminanceTexture, dynamic_cast<DeviceTexture*>(mLuminanceTexture->GetResource()));
@@ -293,11 +293,20 @@ namespace MRenderer
             uint32 dispatch_size_x = CalculateDispatchSize(tex_width, HistogramComputeThreadGroupSize);
             uint32 dispatch_size_y = CalculateDispatchSize(tex_height, HistogramComputeThreadGroupSize);
 
-            cmd->Dispatch(&mLuminanceHistogramCompute, dispatch_size_x, dispatch_size_y, 1);
+
+            static bool once = false;
+            if (!once) 
+            {
+                //once = true;
+                cmd->Dispatch(&mLuminanceHistogramCompute, dispatch_size_x, dispatch_size_y, 1);
+            }
         }
 
         {
             PIXScope(cmd, "Average Luminance Pass");
+
+            mLuminanceHistogram->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            mAverageLuminance->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
             mAvarageLuminanceCompute.SetRWStructuredBuffer(AverageLuminanceShader::LuminanceHistogram, mLuminanceHistogram.get());
             mAvarageLuminanceCompute.SetRWStructuredBuffer(AverageLuminanceShader::AverageLuminance, mAverageLuminance.get());
@@ -309,13 +318,15 @@ namespace MRenderer
                 }
             );
 
-            cmd->Dispatch(&mAvarageLuminanceCompute, HistogramBinSize, 1, 1);
+            cmd->Dispatch(&mAvarageLuminanceCompute, 1, 1, 1);
         }
 
         {
             PIXScope(cmd, "Tone Mapping Pass");
 
-            mToneMappingRender.SetStructuredBuffer(ToneMappingShader::AverageLuminance, mAverageLuminance.get());
+            mAverageLuminance->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+            mToneMappingRender.SetRWStructuredBuffer(ToneMappingShader::AverageLuminance, mAverageLuminance.get());
             mToneMappingRender.SetTexture(LuminanceHistogramShader::LuminanceTexture, dynamic_cast<DeviceTexture*>(mLuminanceTexture->GetResource()));
 
             PipelineStateDesc pso_desc = PipelineStateDesc::DrawScreen();

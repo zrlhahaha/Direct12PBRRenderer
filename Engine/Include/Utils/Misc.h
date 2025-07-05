@@ -41,7 +41,15 @@ namespace MRenderer
         static constexpr uint32 InitialBufferCapacity = 256;
 
     public:
-        
+        RingBuffer() = default;
+        RingBuffer(const RingBuffer&) = delete;
+        RingBuffer(RingBuffer&&) = delete;
+
+        RingBuffer& operator=(const RingBuffer&) = delete;
+        RingBuffer& operator=(RingBuffer&&) = delete;
+
+        ~RingBuffer();
+
         template<typename T>
         requires std::is_arithmetic_v<T>
         void Write(T t)
@@ -62,15 +70,8 @@ namespace MRenderer
             mFull = false;
         }
 
-        inline uint32 Capacity() const
-        {
-            return mCapacity;
-        }
-
-        inline const uint8* Data() const 
-        {
-            return mBuffer;
-        }
+        inline uint32 Capacity() const { return mCapacity;}
+        inline const uint8* Data() const { return mBuffer; }
 
         const uint8* Peek(uint32 size);
         const uint8* Read(uint32 size);
@@ -85,7 +86,7 @@ namespace MRenderer
     protected:
         void Extend(uint32 required_size);
 
-    protected:
+    public:
         uint8* mBuffer = nullptr;
         uint32 mCapacity = 0;
         uint32 mBegin = 0;
@@ -100,6 +101,8 @@ namespace MRenderer
     {
         return (size + alignment - 1) & ~(alignment - 1);
     }
+
+    void PrintBytes(const void* data, uint32 size=64);
 
     template<typename... Args>
     class Event 
@@ -147,5 +150,6 @@ namespace MRenderer
         uint32 mNextID;
     };
 
-    std::optional<std::ifstream> LoadFile(std::string_view relative_path);
+    std::optional<std::ifstream> ReadFile(std::string_view path, bool binary=false);
+    std::optional<std::ofstream> WriteFile(std::string_view path, bool binary=false);
 }

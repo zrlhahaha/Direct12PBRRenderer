@@ -43,8 +43,6 @@ namespace MRenderer
 
     void UploadBufferPool::CleanUp()
     {
-        return;
-
         // release upload buffers that were not used in this frame
         // small pages
         size_t erase_begin = mOffset ? mPageIndex + 1 : mPageIndex;
@@ -191,7 +189,6 @@ namespace MRenderer
 
     void UploadBufferAllocator::NextFrame()
     {
-        return;
         mFrameIndex = (mFrameIndex + 1) % FrameResourceCount;
         mPools[mFrameIndex].CleanUp();
     }

@@ -35,6 +35,9 @@ namespace MRenderer
     constexpr const wchar_t* LShaderFolderPath = L"Shader";
     constexpr std::string_view AssetFolderPath = "Asset";
 
+    constexpr std::string_view ConstantBufferGlobalSemanticName = "GlobalConstant";
+    constexpr std::string_view ConstantBufferInstanceSemanticName = "InstanceConstant";
+    constexpr std::string_view ConstantBufferShaderSemanticName = "ShaderConstant";
 
     template<typename T> requires std::is_convertible_v<T, std::wstring>
     void LogImpl(T&& t)
@@ -46,6 +49,12 @@ namespace MRenderer
     void LogImpl(T&& t)
     {
         std::cout << t;
+    }
+
+    template<typename T>
+    void ErorrImpl(T&& t) 
+    {
+        std::cerr << t;
     }
 
     template<typename... Args>
@@ -66,6 +75,14 @@ namespace MRenderer
         LogImpl("[WARN] ");
         (..., LogImpl(args));
         LogImpl("\n");
+    }
+
+    template<typename... Args>
+    void Error(Args&&... args)
+    {
+        ErorrImpl("[Error] ");
+        (..., ErorrImpl(args));
+        ErorrImpl("\n");
     }
 }
 

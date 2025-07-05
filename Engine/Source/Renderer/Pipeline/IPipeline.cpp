@@ -5,27 +5,6 @@
 
 namespace MRenderer
 {
-    void ShaderParameter::JsonSerialize(nlohmann::json& json, const ShaderParameter& t)
-    {
-        uint32 index = static_cast<uint32>(t.mType);
-        ASSERT(index <= static_cast<uint32>(ShaderParameter::EShaderParameter_Total) && index >= 0);
-
-        // float or vector will all be considered as a list in json
-        json = std::vector<float>(&t.mData.vec1, &t.mData.vec1 + index);
-    }
-
-    void ShaderParameter::JsonDeserialize(nlohmann::json& json, ShaderParameter& t)
-    {
-        std::vector<float> staging = json;
-
-        // json list to vector or float
-        memset(&t.mData, 0, sizeof(t.mData));
-        memcpy(&t.mData, staging.data(), staging.size());
-
-        // size of the list = type of the element (EShaderParameter)
-        t.mType = static_cast<ShaderParameter::EShaderParameter>(staging.size());
-    }
-
     ShadingState::ShadingState()
         :mShaderProgram(nullptr), mShaderConstantBuffer(nullptr)
     {
@@ -55,7 +34,9 @@ namespace MRenderer
         mIsCompute = is_compute;
 
         // update shader constant buffer size
-        uint32 size = mShaderProgram->GetConstantBufferSize(is_compute ? EShaderType_Compute : EShaderType_Pixel);
+        const ShaderConstantBufferAttribute* attr = mShaderProgram->GetPrimaryShader()->FindConstantBufferAttribute(ConstantBufferShader::SemanticName);
+        uint32 size = attr ? attr->mSize : 0; // 0 means create samllest buffer, which is 256 bytes in dx12
+        
         if (!mShaderConstantBuffer || mShaderConstantBuffer->BufferSize() != size)
         {
             mShaderConstantBuffer = GD3D12Device->CreateConstBuffer(size);
@@ -67,15 +48,7 @@ namespace MRenderer
         ASSERT(mShaderProgram);
         ASSERT(texture);
 
-        const ShaderAttribute* attr;
-        if (mIsCompute) 
-        {
-            attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_Texture, semantic_name);
-        }
-        else 
-        {
-            attr = mShaderProgram->mPS->FindAttribute(EShaderAttrType_Texture, semantic_name);
-        }
+        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_Texture, semantic_name);
 
         if (!attr)
         {
@@ -90,7 +63,7 @@ namespace MRenderer
     bool ShadingState::SetRWTexture(std::string_view semantic_name, DeviceTexture2D* texture)
     {
         ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
+        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
 
         if (!attr)
         {
@@ -106,7 +79,7 @@ namespace MRenderer
     bool ShadingState::SetRWTextureArray(std::string_view semantic_name, DeviceTexture2DArray* texture_array)
     {
         ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
+        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
 
         if (!attr)
         {
@@ -115,10 +88,10 @@ namespace MRenderer
         }
 
         //e.g shader code: "RWTexture2DArray PrefilterEnvMap[5]" require array has at least 5 mip levels
-        ASSERT(attr->mBindCount <= texture_array->MipSize());
+        ASSERT(attr->mBindCount <= texture_array->MipLevels());
 
         // assign each mip slice to the corresponding texture array
-        for (uint32 mip_level = 0; mip_level < texture_array->MipSize(); mip_level++)
+        for (uint32 mip_level = 0; mip_level < texture_array->MipLevels(); mip_level++)
         {
             mResourceBinding.UAVs[attr->mBindPoint + mip_level] = texture_array->GetUnorderedAccessView(mip_level);
         }
@@ -127,15 +100,7 @@ namespace MRenderer
 
     bool ShadingState::SetStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer)
     {
-        const ShaderAttribute* attr;
-        if (mIsCompute)
-        {
-            attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_Texture, semantic_name);
-        }
-        else
-        {
-            attr = mShaderProgram->mPS->FindAttribute(EShaderAttrType_Texture, semantic_name);
-        }
+        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_StructuredBuffer, semantic_name);
 
         if (!attr)
         {
@@ -149,8 +114,7 @@ namespace MRenderer
 
     bool ShadingState::SetRWStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer)
     {
-        ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->mCS->FindAttribute(EShaderAttrType_RWStructuredBuffer, semantic_name);
+        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_RWStructuredBuffer, semantic_name);
 
         if (!attr)
         {
@@ -177,11 +141,10 @@ namespace MRenderer
         return mShaderConstantBuffer.get();
     }
 
-    const D3D12ShaderProgram* ShadingState::GetShader() const
+    D3D12ShaderProgram* ShadingState::GetShader()
     {
         return mShaderProgram;
     }
-
 
     RenderPassNode* IRenderPass::SampleTexture(RenderPassNode* node)
     {
@@ -277,8 +240,8 @@ namespace MRenderer
 
             return TextureFormatKey
             {
-                static_cast<uint16>(texture->TextureWidth()),
-                static_cast<uint16>(texture->TextureHeight()),
+                static_cast<uint16>(texture->Width()),
+                static_cast<uint16>(texture->Height()),
                 texture->Resource()->Format(),
             };
         }
@@ -320,6 +283,49 @@ namespace MRenderer
         else 
         {
             return this;
+        }
+    }
+
+    void ShaderParameter::JsonSerialize(nlohmann::json& json, const ShaderParameter& t)
+    {
+        Overload overloads{
+            [&](bool val) {json = val; },
+            [&](float val) {json = val; },
+            [&](Vector2 vec) {json = std::array<float, 2>{vec.x, vec.y}; },
+            [&](Vector3 vec) {json = std::array<float, 3>{vec.x, vec.y, vec.z}; },
+            [&](Vector4 vec) {json = std::array<float, 4>{vec.x, vec.y, vec.z, vec.w}; },
+        };
+
+        std::visit(overloads, t.mData);
+    }
+
+    void ShaderParameter::JsonDeserialize(nlohmann::json& json, ShaderParameter& t)
+    {
+        Overload overloads
+        {
+            [&](bool val) { t.mData = val; },
+            [&](float val) { t.mData = val; },
+            [&](const std::array<float, 2>& vec) { t.mData = Vector2(vec[0], vec[1]); },
+            [&](const std::array<float, 3>& vec) { t.mData = Vector3(vec[0], vec[1], vec[2]); },
+            [&](const std::array<float, 4>& vec) { t.mData = Vector4(vec[0], vec[1], vec[2], vec[3]); },
+        };
+
+        if (json.is_number())
+        {
+            overloads(json.get<float>());
+        }
+        else if (json.is_boolean())
+        {
+            overloads(json.get<bool>());
+        }
+        else if (json.is_array())
+        {
+            if (json.size() == 2)
+                overloads(json.get<std::array<float, 2>>());
+            else if (json.size() == 3)
+                overloads(json.get<std::array<float, 3>>());
+            else if (json.size() == 4)
+                overloads(json.get<std::array<float, 4>>());
         }
     }
 }

@@ -17,29 +17,31 @@ namespace MRenderer
     {
         mCommandList->BeginFrame();
 
-        mGlobalConstantBuffer->CommitData(
-            ConstantBufferGlobal{
-                .SkyBoxSH = scene->GetSkyBox() ? scene->GetSkyBox()->GetSHCoefficients() : SH2CoefficientsPack{},
-                .InvView = camera->GetWorldMatrix(),
-                .View = camera->GetLocalSpaceMatrix(),
-                .Projection = camera->GetProjectionMatrix(),
-                .InvProjection = camera->GetProjectionMatrix().Inverse(),
-                .CameraPos = camera->GetTranslation(),
-                .Ratio = camera->Ratio(),
-                .Resolution = Vector2(static_cast<float>(GD3D12Device->Width()), static_cast<float>(GD3D12Device->Height())),
-                .Near = camera->Near(),
-                .Far = camera->Far(),
-                .Fov = camera->Fov(),
-                .DeltaTime = timer->DeltaTime(),
-                .Time = timer->TotalTime(),
-            }
-        );
+        if (scene) 
+        {
+            mGlobalConstantBuffer->CommitData(
+                ConstantBufferGlobal{
+                    .SkyBoxSH = scene->GetSkyBox() ? scene->GetSkyBox()->GetSHCoefficients() : SH2CoefficientsPack{},
+                    .InvView = camera->GetWorldMatrix(),
+                    .View = camera->GetLocalSpaceMatrix(),
+                    .Projection = camera->GetProjectionMatrix(),
+                    .InvProjection = camera->GetProjectionMatrix().Inverse(),
+                    .CameraPos = camera->GetTranslation(),
+                    .Ratio = camera->Ratio(),
+                    .Resolution = Vector2(static_cast<float>(GD3D12Device->Width()), static_cast<float>(GD3D12Device->Height())),
+                    .Near = camera->Near(),
+                    .Far = camera->Far(),
+                    .Fov = camera->Fov(),
+                    .DeltaTime = timer->DeltaTime(),
+                    .Time = timer->TotalTime(),
+                }
+            );
 
-        mCommandList->SetGrphicsConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
-        mCommandList->SetComputeConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
+            mCommandList->SetGrphicsConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
+            mCommandList->SetComputeConstant(EConstantBufferType_Global, mGlobalConstantBuffer->GetCurrendConstantBufferView());
 
-        mFrameGraph->Execute(mCommandList.get(), scene, camera);
-
+            mFrameGraph->Execute(mCommandList.get(), scene, camera);
+        }
         mCommandList->EndFrame();
         return mCommandList.get();
     }

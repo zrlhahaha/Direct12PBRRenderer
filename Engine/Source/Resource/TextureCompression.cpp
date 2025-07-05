@@ -9,11 +9,6 @@ namespace MRenderer
         return format >= ETextureFormat_R32G32B32A32_TYPELESS && format <= ETextureFormat_R32G32_SINT;
     }
 
-    uint32 TextureCompressor::TextureMemorySize(uint32 width, uint32 height, DXGI_FORMAT format)
-    {
-        return static_cast<uint32>(width * height * DirectX::BitsPerPixel(format) / CHAR_BIT);
-    }
-
     DXGI_FORMAT TextureCompressor::GetCompressedFormat(DXGI_FORMAT format)
     {
         if (IsHDRFormat(format))
@@ -54,28 +49,32 @@ namespace MRenderer
         return &instance;
     }
 
-    void TextureCompressor::Compress(const uint8* data, uint32 width, uint32 height, ETextureFormat format, CompressionHandler on_complete)
+    void TextureCompressor::Compress(uint32 width, uint32 height, uint32 mip_levels, ETextureFormat format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete)
     {
         DXGI_FORMAT original_format = static_cast<DXGI_FORMAT>(format);
         DXGI_FORMAT compressed_format = GetCompressedFormat(static_cast<DXGI_FORMAT>(format));
-        TextureCompressInternal(data, width, height, original_format, compressed_format, on_complete);
+        TextureCompressInternal(width, height, mip_levels, original_format, compressed_format, data_size, data_ptr, on_complete);
     }
 
-    void TextureCompressor::Decompress(const uint8* data, uint32 width, uint32 height, ETextureFormat format, CompressionHandler on_complete)
+    void TextureCompressor::Decompress(uint32 width, uint32 height, uint32 mip_levels, ETextureFormat format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete)
     {
         DXGI_FORMAT original_format = static_cast<DXGI_FORMAT>(format);
         DXGI_FORMAT compressed_format = GetCompressedFormat(static_cast<DXGI_FORMAT>(format));
-        TextureDecompressInternal(data, width, height, original_format, compressed_format, on_complete);
+        TextureDecompressInternal(width, height, mip_levels, original_format, compressed_format, data_size, data_ptr, on_complete);
     }
 
     // ref: https://github.com/microsoft/DirectXTex/wiki/Compress
     // BC1 format goes to this function
-    void TextureCompressor::TextureCompressInternal(const uint8* data, uint32 width, uint32 height, DXGI_FORMAT orignal_format, DXGI_FORMAT compressed_format, CompressionHandler on_complete)
+    void TextureCompressor::TextureCompressInternal(uint32 width, uint32 height, uint32 mip_levels, DXGI_FORMAT orignal_format, DXGI_FORMAT compressed_format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete)
     {
         // we use block compression to store the image file
         DirectX::ScratchImage raw_image;
-        ThrowIfFailed(raw_image.Initialize2D(orignal_format, width, height, 1, 1));
-        memcpy(raw_image.GetPixels(), data, TextureMemorySize(width, height, orignal_format));
+        ThrowIfFailed(raw_image.Initialize2D(orignal_format, width, height, 1, mip_levels));
+
+        uint32 mem_size = CalculateTextureSize(width, height, mip_levels, GetPixelSize(orignal_format));
+        ASSERT(raw_image.GetPixelsSize() == mem_size);
+
+        memcpy(raw_image.GetPixels(), data_ptr, mem_size);
 
         // do the compression
         DirectX::ScratchImage compressed;
@@ -113,13 +112,14 @@ namespace MRenderer
         on_complete(static_cast<uint32>(compressed.GetPixelsSize()), compressed.GetPixels());
     }
 
-    void TextureCompressor::TextureDecompressInternal(const uint8* data, uint32 width, uint32 height, DXGI_FORMAT original_format, DXGI_FORMAT compressed_format, CompressionHandler on_complete)
+    void TextureCompressor::TextureDecompressInternal(uint32 width, uint32 height, uint32 mip_levels, DXGI_FORMAT original_format, DXGI_FORMAT compressed_format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete)
     {
         // basicly the inverse process of TextureCompressOnCPU
         DirectX::ScratchImage compressed;
-        ThrowIfFailed(compressed.Initialize2D(compressed_format, width, height, 1,1));
+        ThrowIfFailed(compressed.Initialize2D(compressed_format, width, height, 1, mip_levels));
 
-        memcpy(compressed.GetPixels(), data, TextureMemorySize(width, height, compressed_format));
+        ASSERT(data_size == compressed.GetPixelsSize());
+        memcpy(compressed.GetPixels(), data_ptr, data_size);
 
         DirectX::ScratchImage image;
         ThrowIfFailed(
@@ -131,6 +131,9 @@ namespace MRenderer
                 image
             )
         );
+
+        uint32 mem_size = CalculateTextureSize(width, height, mip_levels, GetPixelSize(original_format));
+        ASSERT(image.GetPixelsSize() == mem_size);
 
         on_complete(static_cast<uint32>(image.GetPixelsSize()), image.GetPixels());
     }

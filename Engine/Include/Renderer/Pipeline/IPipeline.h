@@ -10,6 +10,7 @@
 #include "Utils/Thread.h"
 #include "Resource/Shader.h"
 #include "Resource/VertexLayout.h"
+#include "Resource/json.hpp"
 
 
 namespace MRenderer 
@@ -151,9 +152,22 @@ namespace MRenderer
         EConstantBufferType_Total = 3
     };
 
-    struct alignas(16) ConstantBufferGlobal
+    // dummy class
+    struct ConstantBufferShader 
     {
+    public:
+        static constexpr std::string_view SemanticName = ConstantBufferShaderSemanticName;
+    };
+
+    struct ConstantBufferGlobal
+    {
+    public:
+        static constexpr std::string_view SemanticName = ConstantBufferGlobalSemanticName;
+
+    public:
         SH2CoefficientsPack SkyBoxSH;
+
+        // matrix is stored in row major order on both the CPU side (Matrix4x4) and the GPU side (cbuffer)
         Matrix4x4 InvView;
         Matrix4x4 View;
         Matrix4x4 Projection;
@@ -173,11 +187,60 @@ namespace MRenderer
 
     struct ConstantBufferInstance
     {
+    public:
+        static constexpr std::string_view SemanticName = ConstantBufferInstanceSemanticName;
+
+    public:
+        ConstantBufferInstance() 
+            :Albedo(1.0f, 1.0f, 1.0f), Roughness(1.0f), Metallic(0.0f), UseAlbedoMap(false),
+            UseNormalMap(false), UseMetallicMap(false), UseRoughnessMap(false), UseAmbientOcclusionMap(false)
+        {
+        }
+
+    public:
         Matrix4x4 Model;
         Matrix4x4 InvModel;
+
+        Vector3 Albedo;
         float Roughness;
+
         float Metallic;
-        bool UseMixedMap;
+        BOOL UseAlbedoMap;
+
+        BOOL UseNormalMap;
+        BOOL UseMetallicMap;
+        BOOL UseRoughnessMap;
+        BOOL UseAmbientOcclusionMap;
+    };
+
+    struct ShaderParameter
+    {
+    public:
+        using StorageType = std::variant<bool, float, Vector2, Vector3, Vector4>;
+
+    public:
+        ShaderParameter()
+        {
+            mData = 0.0f;
+        }
+
+        template<typename T>
+        ShaderParameter(const T& val)
+        {
+            mData = val;
+        }
+
+        template<typename T>
+        T& Value()
+        {
+            return std::get<T>(mData);
+        }
+
+        static void JsonSerialize(nlohmann::json& json, const ShaderParameter& t);
+        static void JsonDeserialize(nlohmann::json& json, ShaderParameter& t);
+
+    public:
+        StorageType mData;
     };
 
     // a class contains shader, texturex, constant buffer for a draw call
@@ -198,7 +261,7 @@ namespace MRenderer
         bool SetRWStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer);
         
         void ClearResourceBinding();
-        const D3D12ShaderProgram* GetShader() const;
+        D3D12ShaderProgram* GetShader();
         const ResourceBinding* GetResourceBinding() const;
         DeviceConstantBuffer* GetConstantBuffer();
 

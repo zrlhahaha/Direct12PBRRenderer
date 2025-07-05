@@ -25,6 +25,8 @@ namespace MRenderer
         // debug controller
         ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&mDebugController)));
         mDebugController->EnableDebugLayer();
+        //mDebugController->SetEnableGPUBasedValidation(true);
+        //mDebugController->SetEnableSynchronizedCommandQueueValidation(true);
 
         // dxgi factory
         ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mDxgiFactory)));
@@ -223,15 +225,15 @@ namespace MRenderer
         ASSERT(data_size % stride == 0);
 
         const D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-        MemoryAllocation* allocation = CreateDeviceBuffer(data_size, false, data, InitialState);
+        D3D12Resource resource = CreateDeviceBuffer(data_size, false, data, InitialState);
 
         // create vertex buffer view
         D3D12_VERTEX_BUFFER_VIEW vbv = {};
-        vbv.BufferLocation = allocation->Resource()->GetGPUVirtualAddress();
+        vbv.BufferLocation = resource.Resource()->GetGPUVirtualAddress();
         vbv.SizeInBytes = data_size;
         vbv.StrideInBytes = stride;
 
-        return std::make_shared<DeviceVertexBuffer>(D3D12Resource(allocation, InitialState, nullptr), vbv);
+        return std::make_shared<DeviceVertexBuffer>(std::move(resource), vbv);
     }
 
     std::shared_ptr<DeviceIndexBuffer> D3D12Device::CreateIndexBuffer(const uint32* data, uint32 data_size)
@@ -239,15 +241,15 @@ namespace MRenderer
         ASSERT(data_size % sizeof(IndexType) == 0);
 
         const D3D12_RESOURCE_STATES InitialState = D3D12_RESOURCE_STATE_INDEX_BUFFER;
-        MemoryAllocation* allocation = CreateDeviceBuffer(data_size, false, data, InitialState);
+        D3D12Resource resource = CreateDeviceBuffer(data_size, false, data, InitialState);
 
         // create index buffer view
         D3D12_INDEX_BUFFER_VIEW ibv = {};
-        ibv.BufferLocation = allocation->Resource()->GetGPUVirtualAddress();
+        ibv.BufferLocation = resource.Resource()->GetGPUVirtualAddress();
         ibv.SizeInBytes = data_size;
         ibv.Format = DXGI_FORMAT_R32_UINT; // index format is fixed to DXGI_FORMAT_R32_UINT
         
-        return std::make_shared<DeviceIndexBuffer>(D3D12Resource(allocation, InitialState, nullptr), ibv);
+        return std::make_shared<DeviceIndexBuffer>(std::move(resource), ibv);
     }
 
     std::shared_ptr<DeviceStructuredBuffer> D3D12Device::CreateStructuredBuffer(uint32 data_size , uint32 stride, const void* initial_data/*=nullptr*/)
@@ -256,8 +258,9 @@ namespace MRenderer
         ASSERT(stride % 4 == 0);
 
         // resource allocation
-        MemoryAllocation* allocation = CreateDeviceBuffer(data_size, true, initial_data, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        auto resource = std::make_shared<DeviceStructuredBuffer>(D3D12Resource(allocation, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr));
+        auto resource = std::make_shared<DeviceStructuredBuffer>(
+            CreateDeviceBuffer(data_size, true, initial_data, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+        );
 
         // srv descriptor
         D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
@@ -293,42 +296,22 @@ namespace MRenderer
         return resource;
     }
 
-    std::shared_ptr<DeviceTexture2D> D3D12Device::CreateTexture2D(uint32 width, uint32 height, ETextureFormat format, const void* initial_data/*=nullptr*/, bool unorder_access/*=false*/ )
+    std::shared_ptr<DeviceTexture2D> D3D12Device::CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access/*= false*/, uint32 mip_chain_mem_size/*=0*/, const void* mip_chain/*=nullptr*/)
     {
         ASSERT(format != ETextureFormat_DepthStencil);
         DXGI_FORMAT dxgi_format = static_cast<DXGI_FORMAT>(format);
 
-        D3D12_RESOURCE_STATES res_state = initial_data ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_COMMON;
+        D3D12_RESOURCE_STATES res_state = mip_chain ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_COMMON;
 
         // allocate 2d texture
         AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 1, 0, 1, 0, unorder_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 1, mip_level, 1, 0, unorder_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
             .heap_type = D3D12_HEAP_TYPE_DEFAULT,
             .initial_state = res_state,
         };
 
         MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
         auto resource = std::make_shared<DeviceTexture2D>(D3D12Resource(allocation->Resource(), res_state, nullptr));
-
-        // upload initial_data to gpu if it's provided
-        if (initial_data) 
-        {
-            uint32 pixel_size = static_cast<uint32>(DirectX::BitsPerPixel(dxgi_format) / CHAR_BIT);
-
-            // allocate upload buffer
-            size_t intermediate_size = GetRequiredIntermediateSize(allocation->Resource(), 0, 1);
-            UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
-        
-            D3D12_SUBRESOURCE_DATA resource{
-                .pData = initial_data,
-                .RowPitch = static_cast<LONG_PTR>(width * pixel_size),
-                .SlicePitch = static_cast<LONG_PTR>(width * height * pixel_size),
-            };
-
-            // copy texture data
-            ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
-            UpdateSubresources(command_list, allocation->Resource(), upload_buffer.resource, upload_buffer.offset, 0, 1, &resource);
-        }
 
         // srv descriptor
         D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
@@ -337,12 +320,12 @@ namespace MRenderer
             .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
             .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
             .Texture2D{
-                .MipLevels = 1
+                .MipLevels = mip_level
             }
         };
         resource->SetShaderResourceView(CreateShaderResourceView(&srv_desc, resource->Resource()));
 
-        // uav descriptor
+        // uav descriptor 
         if (unorder_access) 
         {
             D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc
@@ -353,23 +336,29 @@ namespace MRenderer
             };
             resource->SetUnorderedAccessView(CreateUnorderedAccessView(&uav_desc, resource->Resource()));
         }
+
+        // upload initial_data to gpu if it's provided
+        if (mip_chain)
+        {
+            CommitTextureSubresource(resource.get(), 0, mip_chain_mem_size, mip_chain);
+        }
         return resource;
     }
 
 
-    std::shared_ptr<DeviceTexture2DArray> D3D12Device::CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, std::array<TextureData, 6>* initial_data, bool unorder_access)
+    std::shared_ptr<DeviceTexture2DArray> D3D12Device::CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access/*=false*/, uint32 mip_chain_mem_size/*=0*/, const std::array<const void*, NumCubeMapFaces>* mip_chains/*=nullptr*/)
     {
         DXGI_FORMAT dxgi_format = static_cast<DXGI_FORMAT>(format);
 
         // allocate 2d texture arrray
         AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 6, mip_level, 1, 0, unorder_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, NumCubeMapFaces, mip_level, 1, 0, unorder_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
             .heap_type = D3D12_HEAP_TYPE_DEFAULT,
             .initial_state = D3D12_RESOURCE_STATE_COPY_DEST,
         };
 
         MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
-        auto resource = std::make_shared<DeviceTexture2DArray>(D3D12Resource(allocation, D3D12_RESOURCE_STATE_COPY_DEST, nullptr), mip_level);
+        auto resource = std::make_shared<DeviceTexture2DArray>(D3D12Resource(allocation, D3D12_RESOURCE_STATE_COPY_DEST, nullptr));
 
         // generate srv descriptor
         D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
@@ -378,9 +367,9 @@ namespace MRenderer
             .ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE,
             .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
             .Texture2DArray{
-                .MipLevels = UINT32_MAX,
+                .MipLevels = mip_level,
                 .FirstArraySlice = 0,
-                .ArraySize = 6,
+                .ArraySize = NumCubeMapFaces,
             }
         };
         resource->SetShaderResourceView(CreateShaderResourceView(&srv_desc, resource->Resource()));
@@ -399,7 +388,7 @@ namespace MRenderer
                     {
                         .MipSlice = i,
                         .FirstArraySlice = 0,
-                        .ArraySize = 6,
+                        .ArraySize = NumCubeMapFaces,
                         .PlaneSlice = 0,
                     }
                 };
@@ -407,11 +396,11 @@ namespace MRenderer
             }
         }
 
-        if (initial_data) 
+        if (mip_chains)
         {
-            for (uint32 i = 0; i < min(initial_data->size(), 6); i++)
+            for (uint32 i = 0; i < NumCubeMapFaces; i++) 
             {
-                resource->UpdateArraySlice(i, initial_data->at(i).mData.GetData(), initial_data->at(i).mData.GetSize());
+                CommitTextureSubresource(resource.get(), i, mip_chain_mem_size, mip_chains->at(i));
             }
         }
         return resource;
@@ -420,7 +409,8 @@ namespace MRenderer
     std::shared_ptr<DeviceConstantBuffer> D3D12Device::CreateConstBuffer(uint32 buffer_size)
     {
         // must be a multiple of 256 bytes
-        buffer_size = buffer_size + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1) & ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
+        buffer_size = AlignUp(buffer_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+        // minimum size is 256 bytes
         buffer_size = max(buffer_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
         // allocate constant buffer
@@ -647,31 +637,74 @@ namespace MRenderer
         return std::make_shared<PipelineStateObject>(pso);
     }
 
-    void D3D12Device::UpdateTextureArraySlice(DeviceTexture2DArray* array, uint32 index, const void* data)
+    void D3D12Device::CommitTextureSubresource(DeviceTexture* dest, uint32 array_slice, uint32 mip_chain_mem_size, const void* mip_chain)
     {
-        size_t pixel_size = DirectX::BitsPerPixel(static_cast<DXGI_FORMAT>(array->Format())) / CHAR_BIT;
+        ASSERT(dest && mip_chain);
+        ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
+
+        uint32 tex_width = dest->Width();
+        uint32 tex_height = dest->Height();
+        uint32 tex_depth = dest->Depth();
+        uint32 mip_levels = dest->MipLevels();
+        uint32 pixel_size = GetPixelSize(dest->Format());
+
+        ASSERT(mip_chain_mem_size == CalculateTextureSize(tex_width, tex_height, mip_levels, pixel_size));
+
+        // calculate subresource index
+        uint32 subres_index_0 = D3D12CalcSubresource(0, array_slice, 0, mip_levels, tex_depth); // subresources index for the first mip level
+        uint32 subres_index_n = D3D12CalcSubresource(mip_levels - 1, array_slice, 0, mip_levels, tex_depth); // subresources index for the last mip level
+        ASSERT(subres_index_n - subres_index_0 + 1 == mip_levels); // mipmaps in a array slice should be contiguous
+
+        // transition resource state
+        dest->Resource()->TransitionBarrier(command_list, D3D12_RESOURCE_STATE_COPY_DEST);
 
         // allocate upload buffer
-        size_t intermediate_size = GetRequiredIntermediateSize(array->Resource()->Resource(), 0, 1);
+        ID3D12Resource* raw_resource = dest->Resource()->Resource();
+        size_t intermediate_size = GetRequiredIntermediateSize(raw_resource, subres_index_0, mip_levels);
         UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
 
-        D3D12_SUBRESOURCE_DATA resource{
-            .pData = data,
-            .RowPitch = static_cast<LONG_PTR>(array->TextureWidth() * pixel_size),
-            .SlicePitch = static_cast<LONG_PTR>(array->TextureWidth() * array->TextureHeight() * pixel_size),
-        };
+        // fill the subresource table for @UpdateSubresources
+        constexpr uint32 MAX_SUBRESOURCES_SIZE = 128; // for avoiding heap allocation during this function call, maybe move this to heap memory in the future
+        std::array<D3D12_SUBRESOURCE_DATA, MAX_SUBRESOURCES_SIZE> subresources;
+        ASSERT(mip_levels < MAX_SUBRESOURCES_SIZE);
 
-        // transfer texture data
-        ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
-        UpdateSubresources(command_list, array->Resource()->Resource(), upload_buffer.resource, upload_buffer.offset, index, 1, &resource);
+#ifndef NDebug
+        // check our CalculateMipmapLayout part is consistent with dx12 layout
+        std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT, MAX_SUBRESOURCES_SIZE> dx12_layout;
+        std::array<uint32, MAX_SUBRESOURCES_SIZE> num_rows;
+        std::array<uint64, MAX_SUBRESOURCES_SIZE> row_sizes;
+
+        auto desc = raw_resource->GetDesc();
+        mDevice->GetCopyableFootprints(&desc, subres_index_0, mip_levels, 0, dx12_layout.data(), num_rows.data(), row_sizes.data(), nullptr);
+#endif // !NDebug
+
+        for (uint32 i = 0; i < mip_levels; i++)
+        {
+            MipmapLayout m_layout = CalculateMipmapLayout(dest->Width(), dest->Height(), dest->MipLevels(), pixel_size, i);
+
+#ifndef NDebug
+            const D3D12_SUBRESOURCE_FOOTPRINT& slice_layout = dx12_layout[i].Footprint;
+            ASSERT(row_sizes[i] * num_rows[i] == m_layout.MipSize);
+#endif // !NDebug
+
+            subresources[i] =
+            {
+                .pData = static_cast<const uint8*>(mip_chain) + m_layout.BaseOffset,
+                .RowPitch = static_cast<LONG_PTR>(m_layout.Width * pixel_size),
+                .SlicePitch = static_cast<LONG_PTR>(m_layout.Width * m_layout.Height * pixel_size),
+            };
+        }
+
+        // copy subresources to gpu side
+        UpdateSubresources(command_list, raw_resource, upload_buffer.resource, upload_buffer.offset, subres_index_0, mip_levels, subresources.data());
     }
 
-    void D3D12Device::UploadToDefaultHeap(ID3D12Resource* resource, const void* data, uint32 size)
+    void D3D12Device::CommitBuffer(D3D12Resource* resource, const void* data, uint32 size)
     {
         ASSERT(data);
 
         // allocate upload buffer
-        size_t intermediate_size = GetRequiredIntermediateSize(resource, 0, 1);
+        size_t intermediate_size = GetRequiredIntermediateSize(resource->Resource(), 0, 1);
 
         ASSERT(size <= intermediate_size);
         UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
@@ -682,7 +715,8 @@ namespace MRenderer
         // transfer data from upload buffer to vertex buffer
         ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
 
-        command_list->CopyBufferRegion(resource, 0, upload_buffer.resource, upload_buffer.offset, size);
+        resource->TransitionBarrier(command_list, D3D12_RESOURCE_STATE_COPY_DEST);
+        command_list->CopyBufferRegion(resource->Resource(), 0, upload_buffer.resource, upload_buffer.offset, size);
     }
 
     ID3D12RootSignature* D3D12Device::GetRootSignature()
@@ -711,26 +745,24 @@ namespace MRenderer
         mResourceCache[mFrameIndex].push_back(res);
     }
 
-    MemoryAllocation* D3D12Device::CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/)
+    D3D12Resource D3D12Device::CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/)
     {
         // allocate vertex buffer
+        D3D12_RESOURCE_STATES state = initial_data ? D3D12_RESOURCE_STATE_COPY_DEST : initial_state;
+
         AllocationDesc desc = {
             .resource_desc = CD3DX12_RESOURCE_DESC::Buffer(size, unordered_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
             .heap_type = D3D12_HEAP_TYPE_DEFAULT,
-            .initial_state = D3D12_RESOURCE_STATE_COPY_DEST,
+            .initial_state = state,
         };
-
-        MemoryAllocation* allocation = mMemoryAllocator->Allocate(desc);
+        D3D12Resource resource(mMemoryAllocator->Allocate(desc), state, nullptr);
 
         if (initial_data)
         {
-            UploadToDefaultHeap(allocation->Resource(), initial_data, size);
-
-            CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(allocation->Resource(), D3D12_RESOURCE_STATE_COPY_DEST, initial_state);
-            mResourceCommandList[mFrameIndex].Get()->ResourceBarrier(1, &barrier);
+            CommitBuffer(&resource, initial_data, size);
         }
 
-        return allocation;
+        return resource;
     }
 
     ID3D12RootSignature* D3D12Device::CreateRootSignature() const
@@ -876,6 +908,9 @@ namespace MRenderer
         ThrowIfFailed(mResourceCommandAllocator[mFrameIndex]->Reset());
         ThrowIfFailed(mResourceCommandList[mFrameIndex]->Reset(mResourceCommandAllocator[mFrameIndex].Get(), nullptr));
         mUploadBufferAllocator->NextFrame();
+
+        // clear released resource
+        ClearResourceCache(mFrameIndex);
 
         if (!mResourceInitialized) UNLIKEYLY
         {

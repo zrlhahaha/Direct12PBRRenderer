@@ -67,7 +67,6 @@ namespace MRenderer
         // clean back buffer and depth stencil
         DeviceBackBuffer* rt = GD3D12Device->GetCurrentBackBuffer();
         ClearRenderTarget(rt->GetRenderTargetView());
-
     }
 
     void D3D12CommandList::EndFrame()
@@ -86,10 +85,9 @@ namespace MRenderer
         // mesh
         SetGeometry(vertices, indicies);
 
-        if (shading_state->GetResourceBinding()) 
-        {
-            SetGrphicsConstant(EConstantBufferType_Shader, shading_state->GetConstantBuffer()->GetCurrendConstantBufferView());
-        }
+        // shader constant buffer
+        ASSERT(shading_state->GetConstantBuffer());
+        SetGrphicsConstant(EConstantBufferType_Shader, shading_state->GetConstantBuffer()->GetCurrendConstantBufferView());
 
         // bind shader resource
         SetResourceBinding(shading_state->GetResourceBinding(), false);
@@ -250,7 +248,7 @@ namespace MRenderer
 
         D3D12RootParameters root_parameter = AllocateRootParameter(
             ShaderResourceMaxTexture,
-            is_compute ? ShaderResourceMaxUAV : 0, 
+            ShaderResourceMaxUAV,
             ShaderResourceMaxSampler
         );
 
@@ -274,17 +272,14 @@ namespace MRenderer
             }
         }
 
-        if (is_compute) 
+        // uav
+        for (uint32 i = 0; i < ShaderResourceMaxUAV; i++)
         {
-            // uav
-            for (uint32 i = 0; i < ShaderResourceMaxUAV; i++)
+            UnorderAccessView* view = resource_binding->UAVs[i];
+            if (view)
             {
-                UnorderAccessView* view = resource_binding->UAVs[i];
-                if (view)
-                {
-                    root_parameter.StageUAV(i, view->Descriptor());
-                    view->Resource()->TransitionBarrier(GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                }
+                root_parameter.StageUAV(i, view->Descriptor());
+                view->Resource()->TransitionBarrier(GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             }
         }
 

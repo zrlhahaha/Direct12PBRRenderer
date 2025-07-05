@@ -1,6 +1,5 @@
 #include "Resource/ResourceLoader.h"
 #include "Fundation.h"
-#include "DirectXTex.h"
 #include "Resource/tiny_obj_loader.h"
 
 #include <numeric>
@@ -15,7 +14,7 @@ namespace MRenderer
         return loader;
     }
 
-    std::shared_ptr<ModelResource> ResourceLoader::ImportModel(std::string_view file_path, std::string_view repo_path)
+    std::shared_ptr<ModelResource> ResourceLoader::ImportModel(std::string_view file_path, std::string_view repo_path, float scale/*=1.0f*/, bool flip_uv_y/*=false*/)
     {
         using std::filesystem::path;
 
@@ -74,17 +73,22 @@ namespace MRenderer
                         attrib.vertices[3 * index.vertex_index + 1],
                         attrib.vertices[3 * index.vertex_index + 2],
                     },
-                    .Normal = {
+                    .Normal = Vector3{
                         attrib.normals[3 * index.normal_index + 0],
                         attrib.normals[3 * index.normal_index + 1],
                         attrib.normals[3 * index.normal_index + 2],
-                    },
+                    }.GetNormalized(),
                     .Color = {1, 1, 1},
                     .TexCoord0 = {
                         attrib.texcoords[2 * index.texcoord_index + 0],
                         attrib.texcoords[2 * index.texcoord_index + 1],
                     }
                 };
+
+                if (flip_uv_y) 
+                {
+                    vertex.TexCoord0.y = 1.0f - vertex.TexCoord0.y;
+                }
 
                 center = center + vertex.Position;
                 meshes[mat_index].push_back(vertex);
@@ -128,7 +132,7 @@ namespace MRenderer
         for (auto& vertex : vertices)
         {
             vertex.Position = vertex.Position - center;
-            vertex.Position = vertex.Position * 0.01F;
+            vertex.Position = vertex.Position * scale;
 
             // calculate the bound on the fly
             bound.Min = Vector3::Min(bound.Min, vertex.Position);
@@ -153,43 +157,89 @@ namespace MRenderer
             auto material_resource = std::make_shared<MaterialResource>(std::format("{}_Mat_{}", trimmed_path, std::to_string(i)));
             material_resource->SetShader("gbuffer.hlsl");
 
+            const float DEFAULT_METALLIC = 0.0f;
+            const float DEFAULT_ROUGHNESS = 1.0f;
+            const Vector3 DEFAULT_ALBEDO(1.0f, 1.0f, 1.0f);
+
             if (!obj_mat.diffuse_texname.empty()) 
             {
-                std::filesystem::path base_color_path = source_folder_path / obj_mat.diffuse_texname;
-                std::shared_ptr<TextureResource> base_color = ImportTexture(base_color_path.string(), std::format("{}_{}", trimmed_path, obj_mat.diffuse_texname));
-                if (base_color) 
+                std::filesystem::path albedo_tex_path = source_folder_path / obj_mat.diffuse_texname; // map_Kd
+                std::shared_ptr<TextureResource> albedo_tex = ImportTexture(albedo_tex_path.string(), std::format("{}_{}", trimmed_path, obj_mat.diffuse_texname));
+                
+                material_resource->SetShaderParameter("UseAlbedoMap", ShaderParameter(static_cast<bool>(albedo_tex)));
+                if (albedo_tex) 
                 {
-                    material_resource->SetTexture("BaseColorMap", base_color);
+                    material_resource->SetTexture("AlbedoMap", albedo_tex);
+                }
+                else 
+                {
+                    material_resource->SetShaderParameter("Albedo", ShaderParameter(DEFAULT_ALBEDO));
                 }
             }
 
-            if (!obj_mat.bump_texname.empty())
+            if (!obj_mat.normal_texname.empty())
             {
-                std::filesystem::path normal_path = source_folder_path / obj_mat.bump_texname;
-                std::shared_ptr<TextureResource> normal = ImportTexture(normal_path.string(), std::format("{}_{}", trimmed_path, obj_mat.bump_texname));
-                if (normal) 
+                std::filesystem::path normal_tex_path = source_folder_path / obj_mat.normal_texname; // norm
+                std::shared_ptr<TextureResource> normal_tex = ImportTexture(normal_tex_path.string(), std::format("{}_{}", trimmed_path, obj_mat.normal_texname));
+
+                material_resource->SetShaderParameter("UseNormalMap", ShaderParameter(static_cast<bool>(normal_tex)));
+                if (normal_tex)
                 {
-                    material_resource->SetTexture("NormalMap", normal);
+                    material_resource->SetTexture("NormalMap", normal_tex);
                 }
             }
 
-            if (!obj_mat.specular_texname.empty())
+            if (!obj_mat.roughness_texname.empty())
             {
-                std::filesystem::path normal_path = source_folder_path / obj_mat.specular_texname;
-                std::shared_ptr<TextureResource> normal = ImportTexture(normal_path.string(), std::format("{}_{}", trimmed_path, obj_mat.specular_texname));
-                if (normal)
+                std::filesystem::path roughness_tex_path = source_folder_path / obj_mat.roughness_texname; // map_Pr
+                std::shared_ptr<TextureResource> roughness_tex = ImportTexture(roughness_tex_path.string(), std::format("{}_{}", trimmed_path, obj_mat.roughness_texname));
+                
+                material_resource->SetShaderParameter("UseRoughnessMap", ShaderParameter(static_cast<bool>(roughness_tex)));
+                if (roughness_tex)
                 {
-                    material_resource->SetTexture("MixedMap", normal);
+                    material_resource->SetTexture("RoughnessMap", roughness_tex);
+                }
+                else 
+                {
+                    material_resource->SetShaderParameter("Roughness", ShaderParameter(DEFAULT_ROUGHNESS));
+                }
+            }
+
+            if (!obj_mat.metallic_texname.empty())
+            {
+                std::filesystem::path metallic_tex_path = source_folder_path / obj_mat.metallic_texname; // map_Pm
+                std::shared_ptr<TextureResource> metallic_tex = ImportTexture(metallic_tex_path.string(), std::format("{}_{}", trimmed_path, obj_mat.metallic_texname));
+                
+                material_resource->SetShaderParameter("UseMetallicMap", ShaderParameter(true));
+                if (metallic_tex)
+                {
+                    material_resource->SetTexture("MetallicMap", metallic_tex);
+                }
+                else
+                {
+                    material_resource->SetShaderParameter("Metallic", ShaderParameter(DEFAULT_METALLIC));
+                }
+            }
+
+            if (!obj_mat.ambient_texname.empty())
+            {
+                std::filesystem::path ao_tex_path = source_folder_path / obj_mat.ambient_texname; // map_Ka
+                std::shared_ptr<TextureResource> ao_tex = ImportTexture(ao_tex_path.string(), std::format("{}_{}", trimmed_path, obj_mat.ambient_texname));
+
+                material_resource->SetShaderParameter("UseAmbientOcclusionMap", ShaderParameter(true));
+                if (ao_tex)
+                {
+                    material_resource->SetTexture("AmbientOcclusionMap", ao_tex);
                 }
             }
 
             mats.push_back(material_resource);
         }
 
-        return std::make_shared<ModelResource>(std::format("{}_{}", trimmed_path, "Model"), mesh_resource, mats);
+        return std::make_shared<ModelResource>(std::format("{}_Model", trimmed_path), mesh_resource, mats);
     }
 
-    std::shared_ptr<TextureResource> ResourceLoader::ImportTexture(std::string_view file_path, std::string_view repo_path)
+    std::shared_ptr<TextureResource> ResourceLoader::ImportTexture(std::string_view file_path, std::string_view repo_path, ETextureFormat foramt/*=ETextureFormat_None*/)
     {
         if (!std::filesystem::exists(file_path))
         {
@@ -197,7 +247,7 @@ namespace MRenderer
             return nullptr;
         }
 
-        std::optional<TextureData> tex = LoadImageFile(file_path);
+        std::optional<TextureData> tex = LoadImageFile(file_path, foramt);
         if (!tex) 
         {
             return nullptr;
@@ -223,7 +273,7 @@ namespace MRenderer
         return ret;
     }
 
-    std::optional<TextureData> ResourceLoader::LoadImageFile(std::string_view local_path)
+    std::optional<TextureData> ResourceLoader::LoadImageFile(std::string_view local_path, ETextureFormat format/*=ETextureFormat_None*/)
     {
         using namespace DirectX;
         using std::filesystem::path;
@@ -238,9 +288,9 @@ namespace MRenderer
             }();
 
         path extension = path(local_path).extension();
-        if (extension == ".png") 
+        if (extension == ".png" || extension == ".jpg")
         {
-            return LoadPNGImageFile(local_path);
+            return LoadWICImageFile(local_path, format);
         }
         else if(extension == ".hdr")
         {
@@ -253,39 +303,39 @@ namespace MRenderer
         }
     }
 
-    std::optional<TextureData> ResourceLoader::LoadPNGImageFile(std::string_view local_path)
+    std::optional<TextureData> ResourceLoader::LoadWICImageFile(std::string_view local_path, ETextureFormat format/*=ETextureFormat_None*/)
     {
-        using namespace DirectX;
+        DirectX::ScratchImage image;
+        ThrowIfFailed(DirectX::LoadFromWICFile(ToWString(local_path).data(), DirectX::WIC_FLAGS_NONE, nullptr, image));
 
-        ScratchImage container;
-        ThrowIfFailed(DirectX::LoadFromWICFile(ToWString(local_path).data(), WIC_FLAGS_NONE, nullptr, container));
+        const DirectX::Image* base_slice = image.GetImage(0, 0, 0);
+        uint32 size = static_cast<uint32>(base_slice->rowPitch * base_slice->height);
 
-        const Image* image = container.GetImage(0, 0, 0);
-        uint32 size = static_cast<uint32>(image->width * image->height * DirectX::BitsPerPixel(image->format) / CHAR_BIT);
-
-        if ((image->width % 4) != 0 || (image->height % 4) != 0)
+        if ((base_slice->width % 4) != 0 || (base_slice->height % 4) != 0)
         {
             Warn(std::format("BC requires the width and height of the texture must be a multiple of 4, {} is not satisfied", local_path));
             return std::nullopt;
         }
 
-        return TextureData(
-            BinaryData(image->pixels, size),
-            static_cast<uint32>(image->width),
-            static_cast<uint32>(image->height),
-            static_cast<ETextureFormat>(image->format)
-        );
+        if (format != ETextureFormat_None) 
+        {
+            DirectX::ScratchImage temp;
+            DirectX::Convert(*base_slice, static_cast<DXGI_FORMAT>(format), DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, temp);
+
+            image = std::move(temp);
+            base_slice = image.GetImage(0, 0, 0);
+        }
+
+        return GenerateImageMipmaps(base_slice);
     }
 
     std::optional<TextureData> ResourceLoader::LoadHDRImageFile(std::string_view local_path)
     {
-        using namespace DirectX;
-
-        DirectX::ScratchImage container;
+        DirectX::ScratchImage image;
         HRESULT hr = DirectX::LoadFromHDRFile(
             ToWString(local_path).data(),
             nullptr,
-            container
+            image
         );
 
         if (FAILED(hr)) {
@@ -294,32 +344,27 @@ namespace MRenderer
             return std::nullopt;
         }
 
-        const DirectX::Image* image = container.GetImage(0, 0, 0);
-        uint32 size = static_cast<uint32>(image->width * image->height * DirectX::BitsPerPixel(image->format) / CHAR_BIT);
+        const DirectX::Image* base_slice = image.GetImage(0, 0, 0);
+        uint32 size = static_cast<uint32>(base_slice->width * base_slice->height * DirectX::BitsPerPixel(base_slice->format) / CHAR_BIT);
 
-        if ((image->width % 4) != 0 || (image->height % 4) != 0)
+        if ((base_slice->width % 4) != 0 || (base_slice->height % 4) != 0)
         {
             Warn(std::format("BC requires the width and height of the texture must be a multiple of 4, {} is not satisfied", local_path));
             return std::nullopt;
         }
 
-        static int i = 0;
-        SaveToHDRFile(*image, std::format(L"{}{}{}", L"F:/dev/test", i++, L".hdr").data());
-
-        return TextureData(
-            BinaryData(image->pixels, size),
-            static_cast<uint32>(image->width),
-            static_cast<uint32>(image->height),
-            static_cast<ETextureFormat>(image->format)
-        );
+        return GenerateImageMipmaps(base_slice);
     }
 
     std::array<TextureData, 6> ResourceLoader::LoadCubeMap(std::string_view filepath)
     {
         using std::filesystem::path;
 
+        // same order as in the MSDN documentation
+        // ref: https://learn.microsoft.com/en-us/windows/win32/direct3d9/cubic-environment-mapping
         std::array<TextureData, 6> texture_data;
         const char* file_names[] = { "px.hdr", "nx.hdr", "py.hdr", "ny.hdr", "pz.hdr", "nz.hdr" };
+        
         for (uint32 i = 0; i < 6; i++)
         {
             path local_path = filepath / path(file_names[i]);
@@ -331,6 +376,75 @@ namespace MRenderer
             texture_data[i] = std::move(tex.value());
         }
         return texture_data;
+    }
+
+    std::optional<nlohmann::json> ResourceLoader::LoadJsonFile(std::string_view path)
+    {
+        std::optional<std::ifstream> file = ReadFile(path);
+        if (!file.has_value()) 
+        {
+            return std::nullopt;
+        }
+
+        nlohmann::json::parser_callback_t cb = [](auto&&...) {
+            return true;
+        };
+
+        try {
+            nlohmann::json data = nlohmann::json::parse(file.value(), cb, true);
+            return data;
+        }
+        catch (const nlohmann::json::parse_error& e) {
+            Error("Json Parse Error: " , path);
+            Error(e.what());
+            ASSERT(false);
+        }
+
+        return std::nullopt;
+    }
+
+    TextureData ResourceLoader::GenerateImageMipmaps(const DirectX::Image* mip_0)
+    {
+        ASSERT(mip_0 && mip_0->width && mip_0->height);
+
+        // generate mipmap by directxtex
+        DirectX::ScratchImage mip_chain;
+        ThrowIfFailed(GenerateMipMaps(*mip_0, DirectX::TEX_FILTER_DEFAULT, 0, mip_chain));
+
+        // prepare container for the texture
+        uint32 pixel_size = GetPixelSize(mip_0->format);
+        uint32 mip_levels = static_cast<uint32>(mip_chain.GetImageCount());
+        uint32 mip_0_width = static_cast<uint32>(mip_0->width);
+        uint32 mip_0_height = static_cast<uint32>(mip_0->height);
+
+        BinaryData binary_data(CalculateTextureSize(mip_0_width, mip_0_height, mip_levels, pixel_size));
+
+        for (uint32 i = 0; i < mip_levels; i++)
+        {
+            // verify the mipmap size meets our expectation
+            MipmapLayout layout = CalculateMipmapLayout(mip_0_width, mip_0_height, mip_levels, pixel_size, i);
+            uint8* tex_base = static_cast<uint8*>(binary_data.GetData());
+            uint8* mip_base = tex_base + layout.BaseOffset;
+            
+            const DirectX::Image* img = mip_chain.GetImage(i, 0, 0);
+
+            ASSERT(img->rowPitch * img->height == layout.MipSize);
+            if (i == mip_levels - 1) 
+            {
+                ASSERT(layout.BaseOffset + layout.MipSize == binary_data.GetSize());
+            }
+
+            // copy mipmap
+            memcpy(mip_base, img->pixels, layout.MipSize);
+        }
+
+        return TextureData(
+            std::move(binary_data),
+            static_cast<uint16>(mip_0->height),
+            static_cast<uint16>(mip_0->width),
+            static_cast<uint16>(mip_levels),
+            static_cast<ETextureFormat>(mip_0->format)
+        );
     }
 
     // ref: introductionto 3d game programming with directx12 19.3

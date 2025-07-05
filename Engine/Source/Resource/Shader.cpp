@@ -139,7 +139,7 @@ namespace MRenderer
         }
     }
 
-    const ShaderConstantBufferAttribute* D3D12ShaderCompilation::FindConstantBufferAttribute(std::string sematics_name) const
+    const ShaderConstantBufferAttribute* D3D12ShaderCompilation::FindConstantBufferAttribute(std::string_view sematics_name) const
     {
         for (uint32 i = 0; i < GetConstantBufferCount(); i++)
         {
@@ -157,7 +157,7 @@ namespace MRenderer
         auto it = std::find_if(mShaderAttribute.begin(), mShaderAttribute.end(),
             [&](auto& attr)
             {
-                return attr.mType == attr_type, attr.mName == semantic_name;
+                return attr.mType == attr_type && attr.mName == semantic_name;
             }
         );
 

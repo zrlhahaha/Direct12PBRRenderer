@@ -3,6 +3,7 @@
 
 #include "D3D12Device.h"
 #include "DeviceResource.h"
+#include "Renderer/Pipeline/IPipeline.h"
 
 
 namespace MRenderer 
@@ -104,12 +105,13 @@ namespace MRenderer
         // bind shader resource to the gpu pipeline
         void SetResourceBinding(const ResourceBinding* resource_binding, bool is_compute);
 
-        // set graphics pipeline state
+        // set pipeline state
         void SetGraphicsPipelineState(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program);
         void SetComputePipelineState(const D3D12ShaderProgram* program);
 
         // set stencil reference value
         void SetStencilRef(uint8 ref);
+
     protected:
         D3D12RootParameters AllocateRootParameter(uint32 srv_size, uint32 uav_size, uint32 sampler_size);
         void SetGeometry(const DeviceVertexBuffer* vb, const DeviceIndexBuffer* ib);

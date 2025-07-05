@@ -5,7 +5,7 @@
 #include <filesystem>
 
 #include "D3DUtils.h"
-#include "Resource/ResourceDef.h"
+#include "Renderer/Device/Direct12/DeviceResource.h"
 #include "Resource/Shader.h"
 
 
@@ -172,8 +172,8 @@ namespace MRenderer
         std::shared_ptr<DeviceVertexBuffer> CreateVertexBuffer(const void* data, uint32 count, uint32 stride);
         std::shared_ptr<DeviceIndexBuffer> CreateIndexBuffer(const uint32* data, uint32 data_size);
         std::shared_ptr<DeviceStructuredBuffer> CreateStructuredBuffer(uint32 data_size, uint32 stride, const void* initial_data=nullptr);
-        std::shared_ptr<DeviceTexture2D> CreateTexture2D(uint32 width, uint32 height, ETextureFormat format, const void* initial_data = nullptr, bool unorder_access=false);
-        std::shared_ptr<DeviceTexture2DArray> CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, std::array<TextureData, 6>* initial_data=nullptr, bool unorder_access=false);
+        std::shared_ptr<DeviceTexture2D> CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access=false, uint32 mip_chain_mem_size=0, const void* mip_chain=nullptr);
+        std::shared_ptr<DeviceTexture2DArray> CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access=false, uint32 mip_chain_mem_size=0, const std::array<const void*, NumCubeMapFaces>* mip_chains=nullptr);
         std::shared_ptr<DeviceConstantBuffer> CreateConstBuffer(uint32 size);
         std::shared_ptr<DeviceSampler> CreateSampler(ESamplerFilter filter_mode, ESamplerAddressMode address_mode);
         std::shared_ptr<DeviceRenderTarget> CreateRenderTarget(uint32 width, uint32 height, ETextureFormat format = ETextureFormat_R8G8B8A8_UNORM, D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -181,10 +181,11 @@ namespace MRenderer
         std::shared_ptr<PipelineStateObject> CreateGraphicsPipelineStateObject(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program);
         std::shared_ptr<PipelineStateObject> CreateComputePipelineStateObject(const D3D12ShaderProgram* program);
         
-        void UpdateTextureArraySlice(DeviceTexture2DArray* array, uint32 index, const void* data);
+        // copy texture subresource from cpu side to gpu side
+        void CommitTextureSubresource(DeviceTexture* dest, uint32 array_slice, uint32 mip_chain_mem_size, const void* mip_chain);
         
         // commit data from cpu memory to the default heap, use Map to commit data instead if the @resource is allocated on the upload heap
-        void UploadToDefaultHeap(ID3D12Resource* resource, const void* data, uint32 size);
+        void CommitBuffer(D3D12Resource* resource, const void* data, uint32 size);
 
         ID3D12RootSignature* GetRootSignature();
         DeviceBackBuffer* GetCurrentBackBuffer();
@@ -197,7 +198,7 @@ namespace MRenderer
         void EndFrame(D3D12CommandList* render_command_list=nullptr);
 
     private:
-        MemoryAllocation* CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/);
+        D3D12Resource CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/);
         ID3D12RootSignature* CreateRootSignature() const;
         ShaderResourceView CreateShaderResourceView(const D3D12_SHADER_RESOURCE_VIEW_DESC* desc, D3D12Resource* resource);
         UnorderAccessView CreateUnorderedAccessView(const D3D12_UNORDERED_ACCESS_VIEW_DESC* desc, D3D12Resource* resource);
@@ -239,7 +240,7 @@ namespace MRenderer
         std::shared_ptr<DeviceVertexBuffer> mScreenVertexBuffer;
         std::shared_ptr<DeviceIndexBuffer> mScreenIndexBuffer;
 
-        ComPtr<ID3D12Debug> mDebugController;
+        ComPtr<ID3D12Debug1> mDebugController;
         ComPtr<IDXGIFactory4> mDxgiFactory;
         ComPtr<ID3D12Device> mDevice;
         ComPtr<IDXGISwapChain3> mSwapChain;

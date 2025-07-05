@@ -1,6 +1,11 @@
 {
     "@IResource": null,
-    "mParameterTable": {},
+    "mParameterTable": 
+    {
+        "UseAlbedoMap": true,
+        "UseMixedMap": true,
+        "UseNormalMap": true
+    },
     "mShaderPath": "gbuffer.hlsl",
     "mTexturePath": {
         "BaseColorMap": "Asset/Model/CigarBox\\CigarBox_M_cigar_box1_D.bmp",

@@ -10,164 +10,6 @@
 
 namespace MRenderer
 {
-    BinaryData::BinaryData()
-        :mSize(0), mData(nullptr)
-    {
-    }
-
-    BinaryData::BinaryData(uint32 size)
-    {
-        mSize = size;
-        mData = malloc(size);
-    }
-
-    BinaryData::BinaryData(const void* src_ptr, uint32 size)
-        :mSize(size)
-    {
-        mData = malloc(size);
-        memcpy(mData, src_ptr, size);
-    }
-
-    BinaryData::~BinaryData()
-    {
-        if (mData == nullptr)
-        {
-            free(mData);
-            mData = nullptr;
-            mSize = 0;
-        }
-    }
-
-    BinaryData::BinaryData(BinaryData&& other)
-        :BinaryData()
-    {
-        Swap(*this, other);
-    }
-
-    BinaryData& BinaryData::operator=(BinaryData other)
-    {
-        Swap(*this, other);
-        return *this;
-    }
-
-    void BinaryData::BinarySerialize(RingBuffer& rb, const BinaryData& binary)
-    {
-        rb.Write(binary.mSize);
-        rb.Write(reinterpret_cast<const unsigned char*>(binary.mData), binary.mSize);
-    }
-
-    void BinaryData::BinaryDeserialize(RingBuffer& rb, BinaryData& out)
-    {
-        uint32 size = rb.Read<uint32>();
-        const void* buffer = rb.Read(size);
-
-        out = BinaryData(buffer, size);
-    }
-
-    MeshData::MeshData(MeshData&& rhs)
-        :MeshData()
-    {
-        Swap(*this, rhs);
-    }
-
-    MeshData& MeshData::operator=(MeshData rhs)
-    {
-        Swap(*this, rhs);
-        return *this;
-    }
-
-    TextureData::TextureData(TextureData&& other)
-        :TextureData()
-    {
-        Swap(*this, other);
-    }
-
-    TextureData& TextureData::operator=(TextureData other)
-    {
-        Swap(*this, other);
-        return *this;
-    }
-
-    uint32 TextureData::PixelSize() const
-    {
-        return static_cast<uint32>(DirectX::BitsPerPixel(static_cast<DXGI_FORMAT>(mInfo.Format)) / CHAR_BIT);
-    }
-
-    Vector4 TextureData::Sample(float u, float v) const
-    {
-        // warn: only support DXGI_FORMAT_R32G32B32A32_FLOAT for now
-        ASSERT(mInfo.Format == ETextureFormat_R32G32B32A32_FLOAT);
-
-        uint32 row =  std::clamp<uint32>(static_cast<uint32>(u * mInfo.Width), 0, mInfo.Width - 1);
-        uint32 col =  std::clamp<uint32>(static_cast<uint32>(v * mInfo.Height), 0, mInfo.Height - 1);
-        uint32 tex_index = col * mInfo.Width + row;
-        float* pixel = reinterpret_cast<float*>(mData.GetData()) + tex_index * PixelSize();
-
-        Vector4 ret;
-        for (uint32 i = 0; i < ChannelCount(); i++)
-        {
-            ret[i] = pixel[i];
-        }
-        return ret;
-    }
-
-    void TextureData::SetPixel(uint32 x, uint32 y, const Vector4& color)
-    {
-        // warn: only support r8g8b8a8 for now
-        ASSERT(mInfo.Format == ETextureFormat_R8G8B8A8_UNORM);
-
-        uint32 row = std::clamp<uint32>(x, 0, mInfo.Width - 1);
-        uint32 col = std::clamp<uint32>(y, 0, mInfo.Height - 1);
-        uint32 tex_index = col * mInfo.Width + row;
-        uint8* pixel = reinterpret_cast<uint8*>(mData.GetData()) + tex_index * PixelSize();
-
-        for (uint32 i = 0; i < ChannelCount(); i++) 
-        {
-            uint8 channel = std::clamp<uint8>(static_cast<uint8>(color[i] * 255), 0, 255);
-            pixel[i] = channel;
-        }
-    }
-
-    void TextureData::BinarySerialize(RingBuffer& rb, const TextureData& texture_data)
-    {
-        TextureCompressor::Instance()->Compress(static_cast<const uint8*>(texture_data.mData.GetData()), texture_data.mInfo.Width, texture_data.mInfo.Height, texture_data.mInfo.Format,
-            [&](uint32 size, const uint8* data)
-            {
-                BinarySerialization::Serialize(rb, texture_data.mInfo);
-                rb.Write<uint32>(size);
-                rb.Write(data, size);
-            }
-        );
-    }
-
-    void TextureData::BinaryDeserialize(RingBuffer& rb, TextureData& out_texture_data)
-    {
-        BinarySerialization::Deserialize(rb, out_texture_data.mInfo);
-
-        uint32 compressed_size = rb.Read<uint32>();
-        const uint8* pixels = rb.Read(compressed_size);
-
-        TextureCompressor::Instance()->Decompress(pixels, out_texture_data.mInfo.Width, out_texture_data.mInfo.Height, out_texture_data.mInfo.Format,
-            [&](uint32 size, const uint8* data)
-            {
-                out_texture_data.mData = BinaryData(data, size);
-            }
-        );
-    }
-
-    // theta: angle between y-axis phi: angle between x-axis
-    Vector4 TextureData::SampleTextureCube(const std::array<TextureData, 6>& data, float theta, float phi)
-    {
-        Vector2 tc;
-        uint32 index = 0;
-        CalcCubeMapCoordinate(FromSphericalCoordinate(theta, phi), index, tc);
-
-        const TextureData& slice = data[index];
-        return slice.Sample(tc.x, tc.y);
-    }
-
-    // theta: angle between y-axis phi: angle between x-axis
-
     void MeshResource::AllocateGPUResource()
     {
         // assume there won't be any reallocation for now
@@ -183,9 +25,13 @@ namespace MRenderer
         );
 
         mDeviceIndexBuffer = GD3D12Device->CreateIndexBuffer(
-            static_cast<uint32*>(mMeshData.mIndicies.GetData()),
+            reinterpret_cast<uint32*>(mMeshData.mIndicies.GetData()),
             mMeshData.mIndicies.GetSize()
         );
+
+        // release data
+        mMeshData.mVertices = BinaryData();
+        mMeshData.mIndicies = BinaryData();
     }
 
 
@@ -208,20 +54,28 @@ namespace MRenderer
 
     void TextureResource::AllocateGPUResource()
     {
+        ASSERT(!mTextureData.Empty());
+
         mDeviceTexture = GD3D12Device->CreateTexture2D(
-            mTextureData.mInfo.Width,
-            mTextureData.mInfo.Height,
-            mTextureData.mInfo.Format,
-            mTextureData.mData.GetData()
+            mTextureData.Width(),
+            mTextureData.Height(),
+            mTextureData.MipLevels(),
+            mTextureData.Format(),
+            false,
+            mTextureData.DataSize(),
+            mTextureData.Data()
         );
+
+        // release the texture memory
+        mTextureData.mData = BinaryData();
     }
 
-    ShaderParameter MaterialResource::GetShaderParameter(const std::string& name) 
+    std::optional<ShaderParameter> MaterialResource::GetShaderParameter(const std::string& name)
     { 
         auto it = mParameterTable.find(name);
         if (it == mParameterTable.end()) 
         {
-            return ShaderParameter();
+            return std::nullopt;
         }
         else
         {
@@ -351,7 +205,21 @@ namespace MRenderer
 
     void CubeMapResource::AllocateGPUResource()
     {
-        mDeviceTexture2DArray = GD3D12Device->CreateTextureCube(mTextureData[0].mInfo.Width, mTextureData[0].mInfo.Height, 1, mTextureData[0].mInfo.Format, &mTextureData);
+        const TextureData& face0 = mTextureData[0]; // texture format of 6 faces are the same.
+
+        std::array<const void*, NumCubeMapFaces> pixels{};
+        for (uint32 i = 0; i < NumCubeMapFaces; i++) 
+        {
+            ASSERT(!mTextureData[i].Empty());
+            pixels[i] = mTextureData[i].Data();
+        }
+
+        mDeviceTexture2DArray = GD3D12Device->CreateTextureCube(face0.Width(), face0.Height(), face0.MipLevels(), face0.Format(), false, face0.DataSize(), &pixels);
         mDeviceTexture2DArray->Resource()->SetName(L"CubeMap");
+
+        for (uint32 i = 0; i < NumCubeMapFaces; i++)
+        {
+            mTextureData[i].mData = BinaryData();
+        }
     }
 }

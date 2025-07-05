@@ -61,7 +61,8 @@ namespace MRenderer
         }
         catch (std::exception& e)
         {
-            std::cerr << "Exception: " << e.what() << std::endl;
+            Error("Exception: ", e.what());
+            ASSERT(false);
         }
         return -1;
     }
@@ -81,7 +82,7 @@ namespace MRenderer
         mDevice = std::make_unique<D3D12Device>(mClientWidth, mClientHeight);
         mDevice->BeginFrame();
 
-        mScene = ResourceLoader::Instance().LoadResource<Scene>("Asset/Scene/main.json");
+        // mScene = ResourceLoader::Instance().LoadResource<Scene>("Asset/Scene/main.json");
 
         mCamera = std::make_unique<Camera>(0.4F * PI, mClientWidth, mClientHeight, 0.1F, 1000.0F);
         mCamera->Move(Vector3(0, 0, -5));
@@ -350,7 +351,6 @@ namespace MRenderer
             constexpr uint32 FrameInterval = 1 / 144;
             if (mTimer.DeltaTime() > FrameInterval)
             {
-
                 mInput.EndMessage();
                 UpdateFrameStatus(mRenderScheduler->GetStatus());
 

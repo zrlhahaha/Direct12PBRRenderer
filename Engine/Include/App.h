@@ -74,8 +74,8 @@ namespace MRenderer
         Input mInput;
 
         std::string mMainWndCaption = "MRenderer";
-        uint32 mClientWidth = 1280;
-        uint32 mClientHeight = 720;
+        uint32 mClientWidth = 1440;
+        uint32 mClientHeight = 960;
 
         std::unique_ptr<Camera> mCamera;
         std::unique_ptr<RenderScheduler> mRenderScheduler;

@@ -4,7 +4,7 @@
 // ref: https://bruop.github.io/tonemapping/
 
 Texture2D LuminanceTexture : register(t0);
-StructuredBuffer<float> AverageLuminance : register(t1);
+RWStructuredBuffer<float> AverageLuminance : register(u0);
 
 float compute_max_luminance(float average_luminance)
 {

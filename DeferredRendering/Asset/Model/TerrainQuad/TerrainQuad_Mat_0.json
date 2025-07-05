@@ -1,0 +1,10 @@
+{
+    "@IResource": {},
+    "mParameterTable": {
+        "UseAlbedoMap": true
+    },
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "BaseColorMap": "Asset/Model/TerrainQuad\\TerrainQuad_aerial_grass_rock_diff_2k.jpg"
+    }
+}

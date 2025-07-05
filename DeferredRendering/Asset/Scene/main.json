@@ -4,108 +4,570 @@
     "mSceneModel": [
         {
             "@SceneObject": {
-                "mName": "brick_wall",
+                "mName": "sphere_R0_M0",
+                "mTranslation": {
+                    "x": 0.0,
+                    "z": 5,
+                    "y": 2.0
+                },
                 "mRotation": {
-                    "x": 90.0,
-                    "y": 0.0,
-                    "z": 0.0
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
                 },
                 "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M0"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R0_M1",
+                "mTranslation": {
+                    "x": 0.0,
+                    "z": 5,
+                    "y": 4.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M1"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R0_M2",
+                "mTranslation": {
+                    "x": 0.0,
+                    "z": 5,
+                    "y": 6.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M2"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R0_M3",
+                "mTranslation": {
+                    "x": 0.0,
+                    "z": 5,
+                    "y": 8.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M3"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R0_M4",
+                "mTranslation": {
+                    "x": 0.0,
+                    "z": 5,
+                    "y": 10.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M4"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R1_M0",
+                "mTranslation": {
                     "x": 2.0,
-                    "y": 2.0,
-                    "z": 2.0
+                    "z": 5,
+                    "y": 2.0
                 },
-                "mTranslation": {
+                "mRotation": {
                     "x": 0.0,
-                    "y": -1.0,
-                    "z": 0.0
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
                 }
             },
-            "mModelFilePath": "Asset/Model/BrickWall/BrickWall_Model"
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M0"
         },
         {
             "@SceneObject": {
-                "mName": "sphere",
-                "mRotation": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0
-                },
-                "mScale": {
-                    "x": 1.0,
-                    "y": 1.0,
-                    "z": 1.0
-                },
+                "mName": "sphere_R1_M1",
                 "mTranslation": {
-                    "x": -3.0,
-                    "y": 0.0,
-                    "z": 0.0
-                }
-            },
-            "mModelFilePath": "Asset/Model/Sphere/sphere_Model"
-        },
-        {
-            "@SceneObject": {
-                "mName": "cigar_box",
-                "mRotation": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0
-                },
-                "mScale": {
-                    "x": 1.0,
-                    "y": 1.0,
-                    "z": 1.0
-                },
-                "mTranslation": {
-                    "x": -1.0,
-                    "y": 0.0,
-                    "z": 0.0
-                }
-            },
-            "mModelFilePath": "Asset/Model/CigarBox/CigarBox_Model"
-        },
-        {
-            "@SceneObject": {
-                "mName": "lighter",
-                "mRotation": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0
-                },
-                "mScale": {
                     "x": 2.0,
-                    "y": 2.0,
-                    "z": 2.0
+                    "z": 5,
+                    "y": 4.0
                 },
-                "mTranslation": {
-                    "x": 3.0,
-                    "y": 0.0,
-                    "z": 0.0
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
                 }
             },
-            "mModelFilePath": "Asset/Model/Lighter/Lighter_Model"
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M1"
         },
         {
             "@SceneObject": {
-                "mName": "sofa",
+                "mName": "sphere_R1_M2",
+                "mTranslation": {
+                    "x": 2.0,
+                    "z": 5,
+                    "y": 6.0
+                },
                 "mRotation": {
                     "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0
+                    "z": 0.0,
+                    "y": 0.0
                 },
                 "mScale": {
-                    "x": 1.0,
-                    "y": 1.0,
-                    "z": 1.0
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M2"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R1_M3",
+                "mTranslation": {
+                    "x": 2.0,
+                    "z": 5,
+                    "y": 8.0
                 },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M3"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R1_M4",
+                "mTranslation": {
+                    "x": 2.0,
+                    "z": 5,
+                    "y": 10.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M4"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R2_M0",
                 "mTranslation": {
                     "x": 4.0,
-                    "y": 0.0,
-                    "z": 0.0
+                    "z": 5,
+                    "y": 2.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
                 }
             },
-            "mModelFilePath": "Asset/Model/Sofa/Sofa_Model"
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M0"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R2_M1",
+                "mTranslation": {
+                    "x": 4.0,
+                    "z": 5,
+                    "y": 4.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M1"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R2_M2",
+                "mTranslation": {
+                    "x": 4.0,
+                    "z": 5,
+                    "y": 6.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M2"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R2_M3",
+                "mTranslation": {
+                    "x": 4.0,
+                    "z": 5,
+                    "y": 8.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M3"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R2_M4",
+                "mTranslation": {
+                    "x": 4.0,
+                    "z": 5,
+                    "y": 10.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M4"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R3_M0",
+                "mTranslation": {
+                    "x": 6.0,
+                    "z": 5,
+                    "y": 2.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M0"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R3_M1",
+                "mTranslation": {
+                    "x": 6.0,
+                    "z": 5,
+                    "y": 4.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M1"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R3_M2",
+                "mTranslation": {
+                    "x": 6.0,
+                    "z": 5,
+                    "y": 6.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M2"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R3_M3",
+                "mTranslation": {
+                    "x": 6.0,
+                    "z": 5,
+                    "y": 8.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M3"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R3_M4",
+                "mTranslation": {
+                    "x": 6.0,
+                    "z": 5,
+                    "y": 10.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M4"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R4_M0",
+                "mTranslation": {
+                    "x": 8.0,
+                    "z": 5,
+                    "y": 2.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M0"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R4_M1",
+                "mTranslation": {
+                    "x": 8.0,
+                    "z": 5,
+                    "y": 4.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M1"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R4_M2",
+                "mTranslation": {
+                    "x": 8.0,
+                    "z": 5,
+                    "y": 6.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M2"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R4_M3",
+                "mTranslation": {
+                    "x": 8.0,
+                    "z": 5,
+                    "y": 8.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M3"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R4_M4",
+                "mTranslation": {
+                    "x": 8.0,
+                    "z": 5,
+                    "y": 10.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M4"
+        },
+        {
+            "@SceneObject": {
+                "mName": "rust_sphere",
+                "mTranslation": {
+                    "x": -10.0,
+                    "z": 5,
+                    "y": 2.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Sphere/RustSteel/rust_sphere_model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "revolver",
+                "mTranslation": {
+                    "x": 0,
+                    "z": 0,
+                    "y": 2.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "z": 1.0,
+                    "y": 1.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/Revolver/Revolver_Model"
         }
     ],
     "mSkyBoxPath": "Asset/SkyBox/HDRWild"

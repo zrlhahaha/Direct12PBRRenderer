@@ -1,0 +1,16 @@
+{
+    "@IResource": {},
+    "mParameterTable": {
+        "UseAlbedoMap": true,
+        "UseMetallicMap": true,
+        "UseNormalMap": true,
+        "UseRoughnessMap": true
+    },
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "AlbedoMap": "Asset/Model/Revolver\\Revolver_revolver_albedo.png",
+        "MetallicMap": "Asset/Model/Revolver\\Revolver_revolver_metallic.png",
+        "NormalMap": "Asset/Model/Revolver\\Revolver_revolver_normal.png",
+        "RoughnessMap": "Asset/Model/Revolver\\Revolver_revolver_roughness.png"
+    }
+}

@@ -1,10 +1,8 @@
 #pragma once
 #include <string>
-
+#include "DirectXTex.h"
 #include "Resource/ResourceDef.h"
 #include "Utils/Serialization.h"
-
-
 
 
 namespace MRenderer
@@ -18,14 +16,21 @@ namespace MRenderer
     public:
         static ResourceLoader& Instance();
 
-        static std::shared_ptr<ModelResource> ImportModel(std::string_view file_path, std::string_view repo_path);
-        static std::shared_ptr<TextureResource> ImportTexture(std::string_view file_path, std::string_view repo_path);
+        // import .obj file
+        static std::shared_ptr<ModelResource> ImportModel(std::string_view file_path, std::string_view repo_path, float scale = 1.0f, bool flip_uv_y=false);
+        
+        // import .jpg .png .hdr image
+        static std::shared_ptr<TextureResource> ImportTexture(std::string_view file_path, std::string_view repo_path, ETextureFormat foramt=ETextureFormat_None);
+
+        // import cubemap folder
         static std::shared_ptr<CubeMapResource> ImportCubeMap(std::string_view file_path, std::string_view repo_path);
         
-        static std::optional<TextureData> LoadImageFile(std::string_view path);
-        static std::optional<TextureData> LoadPNGImageFile(std::string_view local_path);
+        static std::optional<TextureData> LoadImageFile(std::string_view path, ETextureFormat foramt=ETextureFormat_None);
+        static std::optional<TextureData> LoadWICImageFile(std::string_view local_path, ETextureFormat format=ETextureFormat_None);
         static std::optional<TextureData> LoadHDRImageFile(std::string_view local_path);
         static std::array<TextureData, 6> LoadCubeMap(std::string_view path);
+
+        static std::optional<nlohmann::json> LoadJsonFile(std::string_view path);
 
         static Vector3 CalculateTangent(const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector2& t0, const Vector2& t1, const Vector2& t2);
         
@@ -64,40 +69,32 @@ namespace MRenderer
         template<Resource T>
         bool DumpJsonResource(T& resource, std::string_view repo_path)
         {
+            // create parent folder if it's not existed
             std::string folder_path = std::filesystem::path(repo_path).parent_path().string();
             ASSERT(std::filesystem::is_directory(folder_path) || std::filesystem::create_directories(folder_path));
 
-            std::ofstream file;
-            file.open(repo_path, std::ios::out);
+            // open file handler
+            std::optional<std::ofstream> file = WriteFile(repo_path);
+            ASSERT(file.has_value());
 
-            if (!file.is_open())
-            {
-                Log("Failed To Create File At ", repo_path);
-                return false;
-            }
-
+            // do the serialization
             nlohmann::json json;
             JsonSerialization::Serialize(json, resource);
 
-
-            file << json.dump(4) << std::endl;
-            file.close();
+            // dump the json file
+            file.value() << json.dump(4) << std::endl;
             return true;
         }
 
         template<Resource T>
         bool LoadJsonResource(T& resource, std::string_view file_path)
         {
-            std::optional<std::ifstream> file = LoadFile(file_path);
-            ASSERT(file.has_value());
+            // load the json file
+            std::optional<nlohmann::json> json = LoadJsonFile(file_path);
+            ASSERT(json.has_value());
 
-            std::ifstream& in = file.value();
-
-            nlohmann::json json;
-            in >> json;
-            JsonSerialization::Deserialize(json, resource);
-
-            in.close();
+            // deserialize the json file and return the @resource
+            JsonSerialization::Deserialize(json.value(), resource);
             return true;
         }
 
@@ -108,7 +105,7 @@ namespace MRenderer
             using std::filesystem::path;
             auto file_path = ActualFilePath<T>(repo_path);
 
-            // resource is cached
+            // resource is cached, just return the cached one
             const auto& it = mResourceCache.find(repo_path.data());
             if (it != mResourceCache.end()) 
             {
@@ -142,6 +139,7 @@ namespace MRenderer
                 UNEXPECTED("Unknow Resource Format");
             }
 
+            // add to the resource cache
             ASSERT(res);
             if(res)
             {
@@ -158,6 +156,7 @@ namespace MRenderer
         void DumpResource(T& res)
         {
             auto file_path = ActualFilePath<T>(res.GetRepoPath());
+
             if constexpr (T::ResourceFormat == EResourceFormat_Json)
             {
                 DumpJsonResource(res, file_path);
@@ -173,6 +172,8 @@ namespace MRenderer
         }
     protected:
         ResourceLoader() = default;
+
+        static TextureData GenerateImageMipmaps(const DirectX::Image* mip_0);
 
     protected:
         std::unordered_map<std::string, std::shared_ptr<IResource>> mResourceCache;

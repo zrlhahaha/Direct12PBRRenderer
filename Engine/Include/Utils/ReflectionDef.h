@@ -68,6 +68,8 @@ namespace MRenderer
     BEGIN_REFLECT_CLASS(TextureInfo, void)
         REFLECT_FIELD(Width, true),
         REFLECT_FIELD(Height, true),
+        REFLECT_FIELD(Depth, true),
+        REFLECT_FIELD(MipLevels, true),
         REFLECT_FIELD(Format, true)
     END_REFLECT_CLASS
 

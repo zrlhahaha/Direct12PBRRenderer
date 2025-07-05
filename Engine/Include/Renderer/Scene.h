@@ -13,8 +13,8 @@ namespace MRenderer
         friend class Scene;
     public:
         SceneObject();
-        virtual ~SceneObject() = default;
         SceneObject(std::string_view name);
+        virtual ~SceneObject() = default;
 
         SceneObject(const SceneObject&) = delete;
         SceneObject& operator=(const SceneObject&) = delete;
@@ -26,6 +26,8 @@ namespace MRenderer
         inline Vector3 GetTranslation() const { return mTranslation; }
         inline Vector3 GetRotation() const { return mRotation; }
         inline Vector3 GetScale() const { return mScale; }
+        inline AABB GetLocalBound() const { return mLocalBound; }
+        inline AABB GetWorldBound() const { return GetWorldMatrix() * mLocalBound; }
 
         void SetWorldMatrix(const Matrix4x4& matrix)
         {
@@ -56,7 +58,6 @@ namespace MRenderer
         }
 
         void PostDeserialized();
-        virtual AABB GetLocalBound() { return AABB(); };
 
         friend void Swap(SceneObject& lhs, SceneObject& rhs) 
         {
@@ -74,10 +75,11 @@ namespace MRenderer
         Vector3 mScale;
 
         // runtime member
-        Event<Vector3> mOnTransformChanged;
-
-        std::shared_ptr<DeviceConstantBuffer> mConstantBuffer;
+        AABB mLocalBound;
         Matrix4x4 mModelMatrix = Matrix4x4::Identity();
+
+        Event<Vector3> mOnTransformChanged;
+        std::shared_ptr<DeviceConstantBuffer> mConstantBuffer;
     };
 
     class SceneModel : public SceneObject 
@@ -86,11 +88,11 @@ namespace MRenderer
         SceneModel() = default;
 
         SceneModel(std::string_view name, std::shared_ptr<ModelResource> model)
-            : SceneObject(name), mModel(model)
+            : SceneObject(name)
         {
+            SetModel(model);
         }
 
-        inline AABB GetLocalBound() override { return mModel->GetBound(); }
         inline ModelResource* GetModel() { return mModel.get(); }
 
         void SetModel(const std::shared_ptr<ModelResource>& res);
@@ -100,6 +102,7 @@ namespace MRenderer
         {
             Swap(static_cast<SceneObject&>(lhs), static_cast<SceneObject&>(rhs));
             std::swap(lhs.mModel, rhs.mModel);
+            std::swap(lhs.mLocalBound, rhs.mLocalBound);
         }
 
     public:
@@ -143,6 +146,9 @@ namespace MRenderer
     class Scene : public IResource
     {
     public:
+        template<typename T>
+        using ContainCallback = std::function<void(const T&)>;
+
         constexpr static EResourceFormat ResourceFormat = EResourceFormat_Json;
         constexpr static float WorldBound = 1000.0f;
 
@@ -168,9 +174,7 @@ namespace MRenderer
         }
 
         // call @func for each model in the scene that intersects with the frustum volume
-        // @func: void(SceneModel* model)
-        template<typename T>
-        void CullModel(const FrustumVolume& volume, const T& func) 
+        void CullModel(const FrustumVolume& volume, ContainCallback<SceneModel*> func)
         {
             mOctreeSceneModel.FrustumCull(volume, 
                 [&](int index) 
@@ -181,9 +185,7 @@ namespace MRenderer
         }
 
         // call @func for each light in the scene that intersects with the frustum volume
-        // @func: void(SceneLight* light)
-        template<typename T>
-        void CullLight(const FrustumVolume& volume, const T& func)
+        void CullLight(const FrustumVolume& volume, ContainCallback<SceneLight*> func)
         {
             mOctreeSceneLight.FrustumCull(volume, 
                 [&](int index)
@@ -203,23 +205,20 @@ namespace MRenderer
         T* AddObjectInternal(std::vector<std::unique_ptr<T>>& container, LooseOctree<int>& octree, std::string_view name, Args... args)
         {
             auto& obj = container.emplace_back(std::make_unique<T>(name, std::forward<Args>(args)...));
-            AddOctreeElementInternal(octree, obj, container.size() - 1);
+            AddOctreeElementInternal(octree, *obj, container.size() - 1);
             return obj.get();
         }
 
         template<typename T, typename... Args>
         void AddOctreeElementInternal(LooseOctree<int>& octree, T& obj, int index) 
         {
-            AABB local_aabb = obj->GetLocalBound();
-            AABB world_aabb = obj->GetWorldMatrix() * local_aabb;
+            const AABB& bound = obj.GetWorldBound();
+            LooseOctree<int>::OctreeElement* element = octree.AddObject(bound, index);
 
-            LooseOctree<int>::OctreeElement* element = octree.AddObject(world_aabb, index);
-
-            obj->mOnTransformChanged.AddFunc(
+            obj.mOnTransformChanged.AddFunc(
                 [&, element](Vector3 translation) mutable
                 {
-                    AABB local_aabb = obj->GetLocalBound();
-                    AABB world_aabb = obj->GetWorldMatrix() * local_aabb;
+                    AABB world_aabb = obj.GetWorldBound();
                     octree.UpdateElement(element, world_aabb);
                 }
             );

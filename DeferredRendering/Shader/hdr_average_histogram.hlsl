@@ -13,14 +13,14 @@
 RWStructuredBuffer<uint> LuminanceHistogram : register(u0); // size = NUM_HISTOGRAM_BINS
 RWStructuredBuffer<float> AverageLuminance : register(u1); // size = 1
 
-cbuffer ShaderConstant : register(b0)
+cbuffer CONSTANT_BUFFER_SHADER : register(b0)
 {
     uint PixelCount;
     float MinLogLuminance;
     float LogLuminanceRange;
 };
 
-groupshared float WeightedLogLuminance[NUM_HISTOGRAM_BINS];
+groupshared float HistogramShared[NUM_HISTOGRAM_BINS];
 
 // the inverse function of @LuminanceToHistogramBin
 float BinIndexToLuminance(uint bin_index)
@@ -39,10 +39,10 @@ void cs_main(uint3 gtid : SV_GroupThreadID)
     uint num_pixels = LuminanceHistogram[index];
     
     // find the average bin in the histogram
-    WeightedLogLuminance[index] = num_pixels * index; // [0, 255 * num_pixels]
+    HistogramShared[index] = num_pixels * index; // [0, 255 * num_pixels]
 
     GroupMemoryBarrierWithGroupSync();
-    
+
     LuminanceHistogram[index] = 0; // clear the histogram
 
     // parallel reduction
@@ -50,7 +50,7 @@ void cs_main(uint3 gtid : SV_GroupThreadID)
     {
         if (index < step)
         {
-            WeightedLogLuminance[index] += WeightedLogLuminance[index + step];
+            HistogramShared[index] += HistogramShared[index + step];
         }
         
         GroupMemoryBarrierWithGroupSync();
@@ -60,7 +60,7 @@ void cs_main(uint3 gtid : SV_GroupThreadID)
     {
         // divide sum by pixels count to get the average bin.
         // ignore the first bin, which means we ignore the almost black area in the image
-        float sum_value = WeightedLogLuminance[0];
+        float sum_value = HistogramShared[0];
         float average_bin = sum_value / (float)(PixelCount - num_pixels); // [0, 255]
         float luminance = BinIndexToLuminance(average_bin); // [0, 1]
 

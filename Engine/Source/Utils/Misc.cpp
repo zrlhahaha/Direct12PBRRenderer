@@ -93,6 +93,15 @@ namespace MRenderer
         return ret;
     }
 
+    RingBuffer::~RingBuffer()
+    {
+        if (mBuffer != nullptr) 
+        {
+            free(mBuffer);
+            mBuffer = nullptr;
+        }
+    }
+
     const uint8* RingBuffer::Peek(uint32 size)
     {
         ASSERT(Occupied() >= size);
@@ -240,24 +249,72 @@ namespace MRenderer
         return converter.from_bytes(str.data());
     }
 
-    std::optional<std::ifstream> LoadFile(std::string_view relative_path)
+    void PrintBytes(const void* data, uint32 size)
     {
-        std::filesystem::path full_path = std::filesystem::absolute(relative_path);
+        const uint8* p = reinterpret_cast<const uint8*>(data);
+        for (uint32 i = 0; i < size; i++)
+        {
+            std::cout<<(static_cast<uint32>(p[i])) << " ";
+        }
+        std::cout << std::endl;
+    }
 
-        std::ifstream in(full_path, std::ios::in | std::ios::binary);
+    std::optional<std::ifstream> ReadFile(std::string_view path, bool binary/*=false*/)
+    {
+        std::filesystem::path full_path = std::filesystem::absolute(path);
+
+        int flag = std::ios::in;
+        if (binary) 
+        {
+            flag |= std::ios::binary;
+        }
+
+        std::ifstream in(full_path, flag);
 
         if (!in.is_open()) {
             Log("Failed To Open File At ", full_path);
 
-            char errMsg[256];
+            // translate @errno and print it to the console
+            char errMsg[512];
             strerror_s(errMsg, sizeof(errMsg), errno);
-            Warn(errMsg);
+            Error(errMsg);
 
             return std::nullopt;
         }
         else
         {
             return std::move(in);
+        }
+    }
+
+    std::optional<std::ofstream> WriteFile(std::string_view path, bool binary/*=false*/)
+    {
+        namespace fs = std::filesystem;
+
+        fs::path folder_path = fs::path(path).parent_path();
+        ASSERT(std::filesystem::is_directory(folder_path) || std::filesystem::create_directories(folder_path));
+
+        int flag = std::ios::out;
+        if (binary) 
+        {
+            flag |= std::ios::binary;
+        }
+
+        std::ofstream file;
+        file.open(path, flag);
+
+        if (!file.is_open())
+        {
+            // translate @errno and print it to the console
+            char errMsg[512];
+            strerror_s(errMsg, sizeof(errMsg), errno);
+            Error(errMsg);
+
+            return std::nullopt;
+        }
+        else 
+        {
+            return std::move(file);
         }
     }
 }

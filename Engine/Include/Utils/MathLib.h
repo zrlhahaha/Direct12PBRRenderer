@@ -1,5 +1,6 @@
 #pragma once
 #include "Fundation.h"
+#include "Constexpr.h"
 
 #include <sstream>
 #include <smmintrin.h>
@@ -56,8 +57,10 @@ namespace MRenderer
     struct VectorOperation
     {
     public:
+        using ElementType = float;
         using VecType = Vector<N>;
         static constexpr uint32 VectorSize = N * sizeof(float);
+        static constexpr uint32 VectorDimension = N;
 
     public:
 
@@ -138,6 +141,17 @@ namespace MRenderer
             }
             ss << "]";
             return ss.str();
+        }
+
+        std::array<ElementType, N> ToArray() const 
+        {
+            const float* m = reinterpret_cast<const float*>(this);
+            std::array<VectorDimension, N> arr;
+            for (uint32 i = 0; i < N; i++)
+            {
+                arr[i] = m[i];
+            }
+            return arr;
         }
 
         VecType operator* (float scale) const
@@ -296,6 +310,16 @@ namespace MRenderer
             return ret;
         }
 
+        static VecType FromArray(const std::array<ElementType, N>& array) 
+        {
+            VecType ret;
+            for (uint32 i = 0; i < N; i++)
+            {
+                ret.At(i) = array[i];
+            }
+            return ret;
+        }
+
     protected:
         // 16 byte aligned float[4] staging buffer, it's used as input for _mm_load_ps and output for _mm_store_ps
         // since they require input or output to be 16 byte aligned
@@ -402,8 +426,14 @@ namespace MRenderer
     static_assert(sizeof(Vector3) == 3 * sizeof(float));
     static_assert(sizeof(Vector4) == 4 * sizeof(float));
 
+    enum class MatrixOrder
+    {
+        RowMajor,
+        ColumnMajor
+    };
 
-    template<typename MatrixType, uint32 Row, uint32 Column> requires(Row == Column)
+
+    template<typename MatrixType, uint32 Row, uint32 Column, MatrixOrder Order> requires(Row == Column)
     struct MatrixOperation 
     {
     protected:
@@ -415,43 +445,59 @@ namespace MRenderer
         // e.g 0x71 means dot product the first 3 elements and store the result in the first element of the returened __m128
         static constexpr uint32 imm8 = (((1 << Row) - 1) << 4) | 0x1;
 
+        static_assert(Order == MatrixOrder::RowMajor); // constructor at Matrix3x3 and Matrix4x4 is row major, column major is unavaliable yet
+
     public:
+        inline int CalcIndex(uint32 row, uint32 column) const
+        {
+            if constexpr (Order == MatrixOrder::ColumnMajor)
+            {
+                return row + column * Row;
+            }
+            else if constexpr (Order == MatrixOrder::RowMajor)
+            {
+                return column + row * Column;
+            }
+            else
+            {
+                static_assert(always_false_v<Order>);
+            }
+        }
+
         inline float& At(uint32 row, uint32 column)
         {
-            ASSERT(row < Row && column < Column);
-
-            float* m = reinterpret_cast<float*>(this);
-            return m[row * Row + column];
+            return const_cast<float&>(std::as_const(*this).At(row, column));
         }
 
         inline const float& At(uint32 row, uint32 column) const
         {
+            ASSERT(row < Row && column < Column);
             const float* m = reinterpret_cast<const float*>(this);
-            return m[row * Row + column];
+            return m[CalcIndex(row, column)];
         }
 
-        inline Vector<Row> GetRow(uint32 row) const
+        inline Vector<Column> GetRow(uint32 row) const
         { 
             ASSERT(row < Row);
+            Vector<Column> ret;
+            const float* m = reinterpret_cast<const float*>(this);
 
+            for (uint32 i = 0; i < Column; i++)
+            {
+                ret[i] = At(row, i);
+            }
+            return ret;
+        }
+
+        inline Vector<Row> GetColumn(uint32 column) const
+        {
+            ASSERT(column < Column);
             Vector<Row> ret;
             const float* m = reinterpret_cast<const float*>(this);
 
             for (uint32 i = 0; i < Row; i++)
             {
-                ret[i] = m[row * Row + i];
-            }
-            return ret;
-        }
-
-        inline Vector<Column> GetColumn(uint32 column) const
-        {
-            ASSERT(column < Column);
-            Vector<Column> ret;
-            const float* m = reinterpret_cast<const float*>(this);
-            for (uint32 i = 0; i < Column; i++)
-            {
-                ret[i] = m[i * Row + column];
+                ret[i] = At(i, column);
             }
             return ret;
         }
@@ -553,7 +599,7 @@ namespace MRenderer
 
     // note: 
     // Matrix3x3 and Matrix4x4 are row major
-    struct Matrix3x3 : MatrixOperation<Matrix3x3, 3, 3>
+    struct Matrix3x3 : MatrixOperation<Matrix3x3, 3, 3, MatrixOrder::RowMajor>
     {
     protected:
         static constexpr uint32 Row = 3;
@@ -623,7 +669,7 @@ namespace MRenderer
 
     static_assert(sizeof(Matrix3x3) == 9 * sizeof(float));
 
-    struct alignas(16)  Matrix4x4 : MatrixOperation<Matrix4x4, 4, 4>
+    struct alignas(16)  Matrix4x4 : MatrixOperation<Matrix4x4, 4, 4, MatrixOrder::RowMajor>
     {
     protected:
         static constexpr uint32 Row = 3;

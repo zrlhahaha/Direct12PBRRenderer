@@ -1,5 +1,5 @@
 #include "Utils/SH.h"
-#include "Resource/ResourceDef.h"
+#include "Resource/BasicStorage.h"
 
 namespace MRenderer
 {
@@ -102,7 +102,6 @@ namespace MRenderer
             // calculate radiance SH coefficients
             // we need to solve the integral of f(w) * Y(n) for each SH basis function
             // we will use Monte Carlo integration and uniform PDF as importance sampling method to approximate this integral
-            // ref: https://zhuanlan.zhihu.com/p/205664052
             for (uint32 i = 0; i < SampleCount; i++)
             {
                 // uniform sample on the unit sphere
@@ -114,13 +113,8 @@ namespace MRenderer
                 float theta = acosf(1 - 2 * rng(gen));
                 Vector3 dir = FromSphericalCoordinate(theta, phi);
 
+                // assume cube map is HDRI format, so we don't need gamma correction here
                 Vector4 color = TextureData::SampleTextureCube(cube_map, theta, phi);
-                
-                // gamma space to linear space
-                color.x = std::pow(color.x, 2.2f);
-                color.y = std::pow(color.y, 2.2f);
-                color.z = std::pow(color.z, 2.2f);
-                color.w = std::pow(color.w, 2.2f);
 
                 for (uint32 co_index = 0; co_index < SH2Coefficients::CoefficientsCount; co_index++)
                 {
@@ -139,10 +133,10 @@ namespace MRenderer
             }
 
             // calculate irradiance SH coefficients * basis function coefficients
-            // so we can get the diffuse term by only multiplying the roughness, coefficients and xyz part of SH basis function
+            // so we can get the diffuse term by only multiplying the coefficients and xyz part of SH basis function
             // see ref for more details
             // ref: https://zhuanlan.zhihu.com/p/144910975 Eq.4
-            // ref: https://cseweb.ucsd.edu/~ravir/papers/invlamb/josa.pdf Eq.24
+            // ref: https://cseweb.ucsd.edu/~ravir/papers/envmap/envmap.pdf Eq.7
             for (int l = 0; l <= SH2Coefficients::SHOrder; l++)
             {
                 for (int m = -l; m <= l; m++)
@@ -160,15 +154,15 @@ namespace MRenderer
 
     std::array<TextureData, 6> SHBaker::GenerateIrradianceMap(const std::array<TextureData, 6>& cube_map, uint32 map_size, bool debug)
     {
-        const ETextureFormat format = ETextureFormat_R8G8B8A8_UNORM;
+        const ETextureFormat format = ETextureFormat_R32G32B32A32_FLOAT;
         std::array<TextureData, 6> irradiance_map =
         {
-            TextureData(map_size, map_size, format),
-            TextureData(map_size, map_size, format),
-            TextureData(map_size, map_size, format),
-            TextureData(map_size, map_size, format),
-            TextureData(map_size, map_size, format),
-            TextureData(map_size, map_size, format),
+            TextureData(map_size, map_size, 1, format),
+            TextureData(map_size, map_size, 1, format),
+            TextureData(map_size, map_size, 1, format),
+            TextureData(map_size, map_size, 1, format),
+            TextureData(map_size, map_size, 1, format),
+            TextureData(map_size, map_size, 1, format),
         };
 
         SH2Coefficients shr, shg, shb;
@@ -240,8 +234,7 @@ namespace MRenderer
         L2.y = pack.shc.y * t;
         L2.z = pack.shc.z * t;
 
-        // Monte Carlo integration is not accurate, we need to clamp the result to avoid overflow
-        return Vector3::Clamp(L0L1 + L2, Vector3(), Vector3(1, 1, 1));
+        return L0L1 + L2;
     }
 
     Vector3 SHBaker::CalcIrradiance2(const SH2Coefficients& shr, const SH2Coefficients& shg, const SH2Coefficients& shb, const Vector3& normal)
@@ -255,7 +248,6 @@ namespace MRenderer
             ret.z += (shb.Data[i] * basis);
         }
 
-        // Monte Carlo integration is not accurate, we need to clamp the result to avoid overflow
-        return Vector3::Clamp(ret, Vector3(), Vector3(1, 1, 1));
+        return ret;
     }
 }

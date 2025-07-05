@@ -1,6 +1,11 @@
 {
     "@IResource": null,
-    "mParameterTable": {},
+    "mParameterTable": 
+    {
+        "UseAlbedoMap": true,
+        "UseMixedMap": true,
+        "UseNormalMap": true
+    },
     "mShaderPath": "gbuffer.hlsl",
     "mTexturePath": {
         "BaseColorMap": "Asset/Model/Lighter\\Lighter_M_lighter3_D.bmp",

@@ -1,4 +1,19 @@
-ImportModel -f OriginalAsset/cigar_box/Overview.obj -o Asset/Model/CigarBox
-ImportModel -f OriginalAsset/sofa/Overview.obj -o Asset/Model/Sofa
+DXGI_FORMAT_R8_UNORM                                = 61
+
+ImportModel -f F:/dev/OriginalAsset/cigar_box/Overview.obj -o Asset/Model/CigarBox -s 0.001
+ImportModel -f F:/dev/OriginalAsset/sofa/Overview.obj -o Asset/Model/Sofa -s 0.001
+ImportModel -f F:/dev/OriginalAsset/terrain_quad/terrain_quad.mtl.obj -o Asset/Model/TerrainQuad
 CreateSphereModel -o Asset/Model/Sphere
 ImportCubeMap -f F:/dev/OriginalAsset/HDRSkyBox/Wild -o Asset/Skybox/HDRWild
+
+ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_albedo.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_albedo
+ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_ao.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_ao -m 61
+ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_metallic.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_metallic -m 61
+ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_normal-dx.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_normal-dx
+ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_roughness.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_roughness -m 61
+ImportTexture -f F:/dev/OriginalAsset/rusted_steel/test.jpg -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/test.jpg -m 61
+ImportModel -f F:/dev/OriginalAsset/terrain_quad/rocky_terrain_02_2k.obj -o Asset/Model/TerrainQuad
+ImportModel -f F:/dev/OriginalAsset/Revolver/revolver.obj -o Asset/Model/Revolver -y 1
+ImportModel -f F:/dev/OriginalAsset/Revolver/revolver.obj -o Asset/Model/Revolver
+
+discordapp.com/users/shayulajiao8789

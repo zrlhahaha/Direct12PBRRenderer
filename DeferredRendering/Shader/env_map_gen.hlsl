@@ -6,7 +6,7 @@
 TextureCube SkyBox;
 RWTexture2DArray<float4> PrefilterEnvMap[PREFILTER_ENVMAP_MIPMAP_SIZE];
 
-cbuffer ShaderConstant
+cbuffer CONSTANT_BUFFER_SHADER
 {
     float Roughness;
     uint MipLevel;
@@ -73,13 +73,28 @@ float3 calc_cubemap_dir(uint slice_index, float u, float v)
         // generate microfacet normal
         float3 H = ggx_important_sample(Roughness, N, xi);
         float3 L = normalize(2 * dot(V, H) * H - V);
-
-        // assume SkyBox is a HDRI cubemap and it's in linear space, so we don't need gamma correction here
-        float3 color = SkyBox.SampleLevel(SamplerLinearClamp, L, 0).rgb;
         float NdotL = max(dot(N, L), 0);
 
+        // trillinear sampling cubemap mipmap chain based on PDF of the incident direction
+        // ref: https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-20-gpu-based-importance-sampling section. 20.4
+        //      https://chetanjags.wordpress.com/2015/08/26/image-based-lighting/
         if(NdotL > 0)
         {
+            float NdotH = max(dot(N, H), 0);
+            float HdotV = max(dot(H, V), 0);
+
+            float D = distribution_ggx(NdotH, Roughness);
+            float pdf = D * NdotH / (4.0 * HdotV + 0.0001); // pdf of the incident direction
+
+            float texel_sa = 4.0 * PI / (NUM_CUBEMAP_FACES * PrefilterEnvMapTextureSize * PrefilterEnvMapTextureSize); // per pixel solid angle
+            float sample_sa = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001); // solid angle for the incident direction
+
+            float mip_level = Roughness == 0.0 ? 0.0 : 0.5 * log2(sample_sa / texel_sa);
+
+            // assume SkyBox is a HDRI cubemap and it's in linear space, so we don't need gamma correction here
+            float3 color = SkyBox.SampleLevel(SamplerLinearClamp, L, mip_level).rgb;
+
+            // follow UE paper, we use NdotL weighted average rather than ordinary monte-carlo
             total_color += color * NdotL;
             total_weight += NdotL;
         }

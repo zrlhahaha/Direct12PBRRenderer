@@ -32,6 +32,7 @@ set(SOURCE_FILES
     ${SOURCE_DIR}/Resource/DefaultResource.cpp
     ${SOURCE_DIR}/Resource/Shader.cpp
     ${SOURCE_DIR}/Resource/TextureCompression.cpp
+    ${SOURCE_DIR}/Resource/BasicStorage.cpp
     ${SOURCE_DIR}/Resource/tiny_obj_loader.cc
     ${SOURCE_DIR}/Utils/Console.cpp
     ${SOURCE_DIR}/Utils/Thread.cpp
@@ -81,6 +82,7 @@ set(HEADER_FILES
     ${INCLUDE_DIR}/Resource/VertexLayout.h
     ${INCLUDE_DIR}/Resource/Shader.h
     ${INCLUDE_DIR}/Resource/json.hpp
+    ${INCLUDE_DIR}/Resource/BasicStorage.h
     ${INCLUDE_DIR}/Resource/TextureCompression.h
 )
 

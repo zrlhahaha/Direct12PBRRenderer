@@ -38,16 +38,9 @@ namespace MRenderer
         }
     }
 
-    DeviceTexture2DArray::DeviceTexture2DArray(D3D12Resource resource, uint32 mip_size)
-        :DeviceTexture(std::move(resource)), mUnorderedAccessViewArray(mip_size), mMipSize(mip_size)
+    DeviceTexture2DArray::DeviceTexture2DArray(D3D12Resource resource)
+        :DeviceTexture(std::move(resource)), mUnorderedAccessViewArray(MipLevels())
     {
-        mSliceSize = static_cast<uint32>(mWidth * mHeight * DirectX::BitsPerPixel(static_cast<DXGI_FORMAT>(Format())) / CHAR_BIT);
-    }
-
-    void DeviceTexture2DArray::UpdateArraySlice(uint32 index, const void* data, uint32 size)
-    {
-        ASSERT(size == mSliceSize);
-        GD3D12Device->UpdateTextureArraySlice(this, index, data);
     }
 
     void DeviceConstantBuffer::SetConstantBufferView(std::array<ConstantBufferView, FrameResourceCount> view_array) 
@@ -74,7 +67,7 @@ namespace MRenderer
 
     void DeviceStructuredBuffer::Commit(const void* data, uint32 size)
     {
-        GD3D12Device->UploadToDefaultHeap(mBuffer.Resource(), data, size);
+        GD3D12Device->CommitBuffer(&mBuffer, data, size);
     }
 
 }

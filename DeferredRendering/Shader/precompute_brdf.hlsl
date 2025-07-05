@@ -2,7 +2,7 @@
 #include "brdf.hlsli"
 #define SAMPLE_COUNT 1024
 
-cbuffer ShaderConstant
+cbuffer CONSTANT_BUFFER_SHADER
 {
     uint TextureResolution;
 }

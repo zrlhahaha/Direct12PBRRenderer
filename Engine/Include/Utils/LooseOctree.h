@@ -10,6 +10,7 @@ namespace MRenderer
     
     protected:
         using ElementTable = NestedObjectAllocator<OctreeElement>;
+        using ContainCallback = std::function<void(const T&)>;
 
         // the number of children in an octree node
         static constexpr uint32 NumOctreeLeaf = 8;
@@ -252,8 +253,7 @@ namespace MRenderer
         }
 
     protected:
-        template<typename Func>
-        void FrustumCullInternal(const FrustumVolume& volume, uint32 node_index, const Func& func)
+        void FrustumCullInternal(const FrustumVolume& volume, uint32 node_index, const ContainCallback& func)
         {
             const OctreeNode& node = mNodeTable[node_index];
             if (volume.Contains(node.Bound)) 

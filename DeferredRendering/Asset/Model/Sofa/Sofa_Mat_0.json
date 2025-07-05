@@ -1,6 +1,11 @@
 {
     "@IResource": null,
-    "mParameterTable": {},
+    "mParameterTable": 
+    {
+        "UseAlbedoMap": true,
+        "UseMixedMap": true,
+        "UseNormalMap": true
+    },
     "mShaderPath": "gbuffer.hlsl",
     "mTexturePath": {
         "BaseColorMap": "Asset/Model/Sofa\\Sofa_M_sofa1_D.bmp",

@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <variant>
 #include "Fundation.h"
 
 #define STRINGIFY(x) #x
@@ -146,14 +147,46 @@ namespace MRenderer
 
     // value false that depend on template parameter for delay instantiation
     template<typename T>
-    struct False 
+    struct always_false 
     {
         static bool constexpr value = false;
     };
 
     template<typename T>
-    struct True
+    constexpr bool always_false_v = always_false<T>::value;
+
+    template<typename T>
+    struct always_true
     {
-        static bool constexpr value = false;
+        static bool constexpr value = true;
     };
+
+    template<typename T>
+    constexpr bool always_true_v = always_true<T>::value;
+
+    // deduce variant type from tuple type
+    // tuple<int, float> => std::variant<int, float>
+    template <typename Tuple>
+    struct TupleToVariant;
+
+    template <typename... Ts>
+    struct TupleToVariant<std::tuple<Ts...>> {
+        using type = std::variant<Ts...>;
+    };
+
+    // for combining lambda into one class
+    // from here: https://zhuanlan.zhihu.com/p/645810896 section. function overload
+    // 
+    // e.g "Overload bar {lambda_1, lambda_2, lambda_3}"
+    // compiler will use deduction guide to deduce "Overload{lambda_1, lambda_2, lambda_3}" as Overload<decltype(lambda_1), decltype(lambda_2), decltype(lambda_3)>,
+    // and aggragate initialize its base classes by {lambda_1, lambda_2, lambda_3}.
+    template<typename... Ts>
+    class Overload : public Ts...
+    {
+    public:
+        using Ts::operator()...;
+    };
+
+    template<typename... Ts>
+    Overload(Ts...) -> Overload<Ts...>;
 }

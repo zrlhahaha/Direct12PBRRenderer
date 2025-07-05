@@ -16,18 +16,17 @@ namespace MRenderer
     public:
         static TextureCompressor* Instance();
 
-        void Compress(const uint8* data, uint32 width, uint32 height, ETextureFormat format, CompressionHandler on_complete);
-        void Decompress(const uint8* data, uint32 width, uint32 height, ETextureFormat format, CompressionHandler on_complete);
+        void Compress(uint32 width, uint32 height, uint32 mip_levels, ETextureFormat format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete);
+        void Decompress(uint32 width, uint32 height, uint32 mip_levels, ETextureFormat format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete);
 
     protected:
         TextureCompressor();
 
-        void TextureCompressInternal(const uint8* data, uint32 width, uint32 height, DXGI_FORMAT orignal_format, DXGI_FORMAT compressed_format, CompressionHandler on_complete);
-        void TextureDecompressInternal(const uint8* data, uint32 width, uint32 height, DXGI_FORMAT original_format, DXGI_FORMAT compressed_format, CompressionHandler on_complete);
+        void TextureCompressInternal(uint32 width, uint32 height, uint32 mip_levels, DXGI_FORMAT orignal_format, DXGI_FORMAT compressed_format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete);
+        void TextureDecompressInternal(uint32 width, uint32 height, uint32 mip_levels, DXGI_FORMAT original_format, DXGI_FORMAT compressed_format, uint32 data_size, const uint8* data_ptr, CompressionHandler on_complete);
 
         static DXGI_FORMAT GetCompressedFormat(DXGI_FORMAT format);
         static bool IsHDRFormat(DXGI_FORMAT format);
-        static uint32 TextureMemorySize(uint32 width, uint32 height, DXGI_FORMAT format);
     protected:
         // directxtex BC6H compress don't support D3D12, so we need to create d3d11 device here for gpu BC6H compression
         ComPtr<ID3D11Device> mDevice;

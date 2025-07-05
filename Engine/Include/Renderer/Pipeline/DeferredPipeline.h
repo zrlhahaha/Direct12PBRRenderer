@@ -31,7 +31,7 @@ namespace MRenderer
         PreFilterEnvMapPass()
             :mReady(false)
         {
-            mPrefilterEnvMap = GD3D12Device->CreateTextureCube(PreFilterEnvMapSize, PreFilterEnvMapSize, PreFilterEnvMapMipsLevel, ETextureFormat_R16G16B16A16_FLOAT, nullptr, true);
+            mPrefilterEnvMap = GD3D12Device->CreateTextureCube(PreFilterEnvMapSize, PreFilterEnvMapSize, PreFilterEnvMapMipsLevel, ETextureFormat_R16G16B16A16_FLOAT, true);
         }
 
         void Connect()
@@ -64,7 +64,7 @@ namespace MRenderer
         PrecomputeBRDFPass()
             : mReady(false)
         {
-            mPrecomputeBRDF = GD3D12Device->CreateTexture2D(512, 512, ETextureFormat_R16G16B16A16_FLOAT, nullptr, true);
+            mPrecomputeBRDF = GD3D12Device->CreateTexture2D(512, 512, 1, ETextureFormat_R16G16_FLOAT, true);
 
             mShadingState.SetShader("precompute_brdf.hlsl", true);
             mShadingState.SetRWTexture("PrecomputeBRDF", mPrecomputeBRDF.get());
@@ -312,9 +312,11 @@ namespace MRenderer
             : mLuminanceTexture(nullptr)
         {
             mLuminanceHistogram = GD3D12Device->CreateStructuredBuffer(HistogramBinSize * sizeof(uint32), sizeof(uint32));
+            mLuminanceHistogram->Resource()->SetName(L"LuminanceHistogram");
 
             float initial_avg_luminance = 0;
             mAverageLuminance = GD3D12Device->CreateStructuredBuffer(1 * sizeof(float), sizeof(float), &initial_avg_luminance);
+            mAverageLuminance->Resource()->SetName(L"AverageLuminance");
         }
 
         void Connect(SkyboxPass* skybox_pass);

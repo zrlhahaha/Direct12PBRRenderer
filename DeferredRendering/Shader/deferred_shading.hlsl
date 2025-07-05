@@ -16,7 +16,7 @@ struct PSInput
 };
 
 //calculate diffuse term in pbr by solving SH polynomial
-float3 EnvironmentDiffuse(float3 base_color, float roughness, float3 normal)
+float3 EnvironmentDiffuse(float3 base_color, float metallic, float3 normal)
 {
     float4 a = float4(normal, 1);
     float4 b = normal.xyzz * normal.yzzx;
@@ -35,15 +35,25 @@ float3 EnvironmentDiffuse(float3 base_color, float roughness, float3 normal)
     L2.z = dot(SkyBoxSH.SHB_B, b);
     L2 += SkyBoxSH.SHB_C.xyz * c;
 
-    float3 sh_eval = (L0L1 + L2) * roughness;
-    return sh_eval * base_color * INV_PI;
+    float3 irradiance = (L0L1 + L2);
+    
+    // ref https://zhuanlan.zhihu.com/p/144910975 eq.4
+    // //  https://learnopengl.com/PBR/IBL/Diffuse-irradiance
+    // float3 F0 = ComputeF0(input);
+    // float3 F = FresnelSchlick(max(dot(input.NormalWS, eyeWS), 0.0), F0, input.Roughness);;
+    // float3 kS = F;
+    // float3 kD = 1.0 - kS;
+    // kD *= 1.0 - input.Metallic;
+
+    float3 kd = base_color * (1 - metallic) * INV_PI;
+    return kd * irradiance;
 }
 
 float3 EnvironmentSpecular(float3 N, float3 V, float3 F0, float roughness)
 {
     float NdotV = max(dot(N, V), 0);
     float3 R = normalize(2 * dot(N, V) * N - V);
-    float3 env_irradiance = PrefilterEnvMap.SampleLevel(SamplerPointWrap, R, roughness * PREFILTER_ENVMAP_MIPMAP_SIZE).rgb;
+    float3 env_irradiance = PrefilterEnvMap.SampleLevel(SamplerLinearClamp, R, roughness * PREFILTER_ENVMAP_MIPMAP_SIZE).rgb;
     float2 env_brdf = PrecomputeBRDF.Sample(SamplerLinearClamp, float2(roughness, NdotV)).rg;
 
     // evaluate the split-sum equation
@@ -115,12 +125,12 @@ float4 ps_main(PSInput input) : SV_TARGET
     float ao = mixed.z;
 
     // indirect light
-    float3 env_diffuse = EnvironmentDiffuse(albedo, roughness, normal_ws);
+    float3 env_diffuse = EnvironmentDiffuse(albedo, metallic, normal_ws);
     float3 env_specular = EnvironmentSpecular(normal_ws, normalize(CameraPos - position_ws), compute_F0(albedo, metallic), roughness);
 
     float3 light_dir_ws = normalize(float3(1, 1, 1));
     float3 light_color = float3(1, 1, 1);
-    float3 light_luminance = float3(1000, 1000, 1000);
+    float3 light_luminance = float3(100, 100, 100);
 
     // direct light
     BRDFInput brdf_input;
@@ -131,8 +141,8 @@ float4 ps_main(PSInput input) : SV_TARGET
     brdf_input.ViewDir = view_ws;
     brdf_input.LightDir = light_dir_ws;
 
-    float3 direct_color = brdf(brdf_input) * light_color * max(dot(normal_ws, light_dir_ws), 0.0);
-    float3 direct_luminance = direct_color * light_luminance;
+    float3 direct_luminance = brdf(brdf_input) * light_color * light_luminance * max(dot(normal_ws, light_dir_ws), 0.0);
 
     return float4(env_diffuse + env_specular, 1);
+    // return float4(max(dot(normal_ws.y, float3(0,1,0)), 0).xxx, 1);
 }

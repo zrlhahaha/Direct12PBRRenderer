@@ -27,6 +27,21 @@ namespace MRenderer
         {
             mParser.add<std::string>("file", 'f', "Model File Path", true, "");
             mParser.add<std::string>("output", 'o', "Repository File Path", true, "");
+            mParser.add<float>("scale", 's', "Model Scale", false, 1.0f);
+            mParser.add<bool>("flip_uv_y", 'y', "Flip UV Y axis", false, false);
+        }
+
+        void Execute() override;
+    };
+
+    class ImportTextureCommand : public ConsoleCommand 
+    {
+    public:
+        ImportTextureCommand() 
+        {
+            mParser.add<std::string>("file", 'f', "Model File Path", true, "");
+            mParser.add<std::string>("output", 'o', "Repository File Path", true, "");
+            mParser.add<int>("format", 'm', "DXGI Format", true, ETextureFormat_None);
         }
 
         void Execute() override;
@@ -76,6 +91,7 @@ namespace MRenderer
         CommandExecutor() 
         {
             mCommandMap["ImportModel"] = std::make_unique<ImportModelCommand>();
+            mCommandMap["ImportTexture"] = std::make_unique<ImportTextureCommand>();
             mCommandMap["ImportCubeMap"] = std::make_unique<ImportCubeMapCommand>();
             mCommandMap["CreateSphereModel"] = std::make_unique<CreateSphereModelCommand>();
             mCommandMap["GenerateIrradianceMap"] = std::make_unique<GenerateIrradianceMapCommand>();

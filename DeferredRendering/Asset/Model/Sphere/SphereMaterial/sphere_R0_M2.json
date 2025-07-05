@@ -1,0 +1,14 @@
+{
+    "mShaderPath": "gbuffer.hlsl",
+    "mParameterTable": {
+        "Albedo": [
+            1.0,
+            1.0,
+            1.0
+        ],
+        "Metallic": 0.5,
+        "Roughness": 0.0
+    },
+    "@IResource": {},
+    "mTexturePath": {}
+}

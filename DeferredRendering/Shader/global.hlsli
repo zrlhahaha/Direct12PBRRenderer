@@ -3,11 +3,16 @@
 
 #define PI 3.14159265359
 #define INV_PI 0.31830988618
+#define NUM_CUBEMAP_FACES 6
 
 #define PREFILTER_ENVMAP_MIPMAP_SIZE 5u
 #define CONSTANT_BUFFER_REGISTER_SHADER b0
 #define CONSTANT_BUFFER_REGISTER_INSTANCE b1
 #define CONSTANT_BUFFER_REGISTER_GLOBAL b2
+
+#define CONSTANT_BUFFER_GLOBAL GlobalConstant
+#define CONSTANT_BUFFER_SHADER ShaderConstant
+#define CONSTANT_BUFFER_INSTANCE InstanceConstant
 
 
 SamplerState SamplerPointWrap           : register(s0);
@@ -29,7 +34,7 @@ struct SHCoefficientsPack
 };
 
 
-cbuffer GlobalConstant : register(b2)
+cbuffer CONSTANT_BUFFER_GLOBAL : register(b2)
 {
     SHCoefficientsPack SkyBoxSH;
 

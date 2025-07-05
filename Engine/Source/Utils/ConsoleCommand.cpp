@@ -32,7 +32,7 @@ namespace MRenderer
         for (uint32 i = 0; i < 6; i++) 
         {
             using std::filesystem::path;
-            std::string filepath = (path(dest_path) / filename[i]).replace_extension(".png").string();
+            std::string filepath = (path(dest_path) / filename[i]).replace_extension(".hdr").string();
             std::filesystem::create_directory(dest_path);
 
             DirectX::Image img;
@@ -43,7 +43,7 @@ namespace MRenderer
             img.slicePitch = IrradianceMapSize * IrradianceMapSize * pixel_size;
             img.pixels = static_cast<uint8*>(irradiance_map[i].mData.GetData());
 
-            ThrowIfFailed(DirectX::SaveToWICFile(img, DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), ToWString(filepath).c_str()));
+            ThrowIfFailed(DirectX::SaveToHDRFile(img, ToWString(filepath).c_str()));
         }
 
         Log("Irradiance Map Generation Finish, Resource Is Saved To ", dest_path);
@@ -54,6 +54,8 @@ namespace MRenderer
         namespace fs = std::filesystem;
         fs::path source_path = mParser.get<std::string>("file");
         fs::path dest_path = mParser.get<std::string>("output");
+        float model_scale = mParser.get<float>("scale");
+        bool flip_uv_y = mParser.get<bool>("flip_uv_y");
 
         // generate @repo_path like this [Asset/Model/CigarBox => Asset/Model/CigarBox/CigarBox]
         // so all the resources are saved in the same folder, something like this:
@@ -74,11 +76,39 @@ namespace MRenderer
             return;
         }
 
-        std::shared_ptr<ModelResource> res = ResourceLoader::ImportModel(source_path.string(), repo_path.string());
+        std::shared_ptr<ModelResource> res = ResourceLoader::ImportModel(source_path.string(), repo_path.string(), model_scale, flip_uv_y);
         if (res) 
         {
             ResourceLoader::Instance().DumpResource(*res);
             Log("Import Model Finish, Resource Is Saved To ", repo_path);
+        }
+    }
+
+
+    void MRenderer::ImportTextureCommand::Execute()
+    {
+        namespace fs = std::filesystem;
+        fs::path source_path = mParser.get<std::string>("file");
+        fs::path dest_path = mParser.get<std::string>("output");
+        int format = mParser.get<int>("format");
+
+        if (source_path == "" || dest_path == "")
+        {
+            Log("Import Failed, File Path Or Destination Path Is Empty");
+            return;
+        }
+
+        if (std::filesystem::exists(dest_path))
+        {
+            Log("Import Failed, Output Path Is Already Occupied");
+            return;
+        }
+
+        std::shared_ptr<TextureResource> res = ResourceLoader::ImportTexture(source_path.string(), dest_path.string(), static_cast<ETextureFormat>(format));
+        if (res)
+        {
+            ResourceLoader::Instance().DumpResource(*res);
+            Log("Import Model Finish, Resource Is Saved To ", dest_path);
         }
     }
 

@@ -454,7 +454,7 @@ namespace MRenderer::JsonSerialization
         if constexpr (has_base_class)
         {
             using base_class_def = class_defination<BaseType>;
-            auto& base_class_json = data[FormatBaseClassString(base_class_def::Name)];
+            auto& base_class_json = data[FormatBaseClassString(base_class_def::Name)] = nlohmann::json::object();
 
             Serialize<typename class_def::BaseType>(base_class_json, t);
         }
@@ -532,13 +532,12 @@ namespace MRenderer
 
         bool LoadFile(std::string_view filepath)
         {
-            auto file = MRenderer::LoadFile(filepath);
+            std::optional<std::ifstream> file = ReadFile(filepath, true);
             ASSERT(file.has_value());
-            std::ifstream& in = file.value();
 
-            in.seekg(0, std::ios::end);
-            std::size_t file_size = in.tellg();
-            in.seekg(0, std::ios::beg);
+            file.value().seekg(0, std::ios::end);
+            std::size_t file_size = file.value().tellg();
+            file.value().seekg(0, std::ios::beg);
 
             if (file_size == 0)
             {
@@ -547,7 +546,7 @@ namespace MRenderer
             }
 
             std::vector<uint8> buffer(file_size);
-            in.read(reinterpret_cast<char*>(buffer.data()), file_size);
+            file.value().read(reinterpret_cast<char*>(buffer.data()), file_size);
 
             mBuffer.Write(buffer.data(), static_cast<uint32>(file_size));
             return true;
@@ -561,23 +560,10 @@ namespace MRenderer
 
         bool DumpFile(std::string_view repo_path)
         {
-            ASSERT(!repo_path.empty());
-            using std::filesystem::path;
-
-            path folder_path = path(repo_path).parent_path();
-            ASSERT(std::filesystem::is_directory(folder_path) || std::filesystem::create_directories(folder_path));
-
-            std::ofstream file;
-            file.open(repo_path.data(), std::ios::out | std::ios::binary);
-
-            if (!file.is_open())
-            {
-                Log("Failed To Create File At ", repo_path);
-                return false;
-            }
+            std::optional<std::ofstream> file = WriteFile(repo_path, true);
 
             std::vector<uint8> data = mBuffer.Dump();
-            file.write(reinterpret_cast<const char*>(data.data()), data.size());
+            file.value().write(reinterpret_cast<const char*>(data.data()), data.size());
 
             mBuffer.Reset();
             return true;

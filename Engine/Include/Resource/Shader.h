@@ -87,10 +87,27 @@ namespace MRenderer
             }
         }
 
+        inline const ShaderConstantBufferVarriable* GetVarialbe(uint32 index) const { return &mAttributes[index]; }
+        inline const ShaderConstantBufferVarriable* GetVarialbe(std::string_view name) const 
+        { 
+            const auto& it =std::find_if(mAttributes.begin(), mAttributes.end(), 
+                [&](const ShaderConstantBufferVarriable& var)
+                {
+                    return var.mName == name;
+                }
+            );
+
+            return it == mAttributes.end() ? nullptr : &*it;
+        }
+
+        inline const uint32 GetVariableCount() const { return mVaraibleCount; }
+
     public:
         std::string mName;
         uint32 mVaraibleCount;
         uint32 mSize;
+
+        // warn: don't expand @mAttributes once the object is constructed, or the return value of @GetVarialbe may become dangling reference
         std::vector<ShaderConstantBufferVarriable> mAttributes;
     };
 
@@ -99,34 +116,14 @@ namespace MRenderer
     public:
         D3D12ShaderCompilation(IDxcBlob* code_blob, ID3D12ShaderReflection* shader_reflection);
 
-        inline uint32 GetTextureCount() const
-        {
-            return CountAttribute(EShaderAttrType_Texture);
-        }
-
-        inline const ShaderAttribute* GetTextureAttribute(uint32 index) const 
-        {
-            return IndexAttribute(EShaderAttrType_Texture, index);
-        }
-
-        inline uint32 GetConstantBufferCount() const
-        {
-            return static_cast<uint32>(mConstantBuffer.size());
-        }
-
-        inline const ShaderConstantBufferAttribute* GetConstantBufferAttribute(uint32 index) const
-        {
-            return &mConstantBuffer[index];
-        }
+        inline IDxcBlob* GetShaderByteCode() const { return mCodeBlob.Get();}
+        inline uint32 GetTextureCount() const { return CountAttribute(EShaderAttrType_Texture); }
+        inline const ShaderAttribute* GetTextureAttribute(uint32 index) const  { return IndexAttribute(EShaderAttrType_Texture, index); }
+        inline uint32 GetConstantBufferCount() const { return static_cast<uint32>(mConstantBuffer.size()); }
+        inline const ShaderConstantBufferAttribute* GetConstantBufferAttribute(uint32 index) const { return &mConstantBuffer[index]; }
 
         const ShaderAttribute* FindAttribute(EShaderAttrType attr_type, std::string_view semantic_name) const;
-
-        const ShaderConstantBufferAttribute* FindConstantBufferAttribute(std::string sematics_name) const;
-
-        inline IDxcBlob* GetShaderByteCode() const
-        {
-            return mCodeBlob.Get();
-        }
+        const ShaderConstantBufferAttribute* FindConstantBufferAttribute(std::string_view sematics_name) const;
 
     protected:
 
@@ -207,38 +204,18 @@ namespace MRenderer
         {
         }
 
-        // each shader may have a cbuffer named  Shader, which is for shader relatived parameters
-        uint32 GetConstantBufferSize(EShaderType type) const
-        {
-            const std::unique_ptr<D3D12ShaderCompilation> D3D12ShaderProgram::* mapping[] = 
-            { 
-                &D3D12ShaderProgram::mVS,
-                &D3D12ShaderProgram::mPS, 
-                &D3D12ShaderProgram::mCS 
-            };
+        inline std::string_view GetFilePath() const{ return mFilePath;}
+        inline bool IsCompute() const { return mCS.get() != nullptr; }
 
-            auto& shader = this->*mapping[type];
-            ASSERT(shader);
-
-            const ShaderConstantBufferAttribute* attr = shader->FindConstantBufferAttribute("Shader");
-            return attr ? attr->mSize : 0;
-        }
-
-        uint32 GetTextureBindPointEdge() const 
-        {
-            uint32 max_bind_point = 0;
-            for (uint32 i = 0; i < mVS->GetTextureCount(); i++) 
-            {
-                max_bind_point = max(max_bind_point, mVS->GetTextureAttribute(i)->mBindPoint);
-            }
-
-            return max_bind_point;
-        }
-
-        std::string_view GetFilePath() const
-        {
-            return mFilePath;
-        }
+        // for query hlsl code declared shader resources and constant buffer
+        // for ordinary shader: mPs
+        // for compute shader: mCS
+        inline D3D12ShaderCompilation* GetPrimaryShader() 
+        { 
+            D3D12ShaderCompilation* ret = IsCompute() ? mCS.get() : mPS.get();
+            ASSERT(ret);
+            return ret;
+        };
 
     public:
         std::unique_ptr<D3D12ShaderCompilation> mVS;

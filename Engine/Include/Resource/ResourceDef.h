@@ -6,17 +6,13 @@
 
 #include "Fundation.h"
 #include "Utils/MathLib.h"
-#include "Utils/Misc.h"
-#include "VertexLayout.h"
 #include "Renderer/Device/Direct12/DeviceResource.h"
 #include "Renderer/Pipeline/IPipeline.h"
-#include "json.hpp"
+#include "Resource/BasicStorage.h"
 
 namespace MRenderer
 {
     class D3D12ShaderProgram;
-
-    using IndexType = uint32;
 
     enum EResourceFormat
     {
@@ -41,231 +37,6 @@ namespace MRenderer
             return nullptr;
         }
     }
-
-    class BinaryData 
-    {
-    public:
-        BinaryData();
-        BinaryData(uint32 size);
-        BinaryData(const void* src_ptr, uint32 size);
-        BinaryData(const BinaryData& other) = delete;
-        BinaryData(BinaryData&& other);
-        ~BinaryData();
-
-        BinaryData& operator=(BinaryData other);
-
-        inline void* GetData() const
-        {
-            return mData;
-        }
-
-        inline uint32 GetSize() const
-        {
-            return mSize;
-        }
-
-        inline void Reset() 
-        {
-            BinaryData temp = std::move(*this);
-        }
-
-        friend void Swap(BinaryData& lhs, BinaryData& rhs) 
-        {
-            using std::swap;
-
-            swap(lhs.mSize, rhs.mSize);
-            swap(lhs.mData, rhs.mData);
-        }
-
-        static void BinarySerialize(RingBuffer&rb, const BinaryData& binary);
-        static void BinaryDeserialize(RingBuffer& rb, BinaryData& out);
-
-    protected:
-        uint32 mSize;
-        void* mData;
-    };
-
-    struct SubMeshData
-    {
-        static constexpr SubMeshData Whole(uint32 indices_count)
-        {
-            return SubMeshData{ 0, indices_count };
-        }
-
-        uint32 Index = 0;
-        uint32 IndicesCount = 0;
-    };
-
-    class MeshData
-    {
-    public:
-        MeshData()
-            :mVertexFormat(EVertexFormat_None)
-        {
-        }
-
-        MeshData(EVertexFormat vertex_format, BinaryData vertices, BinaryData indicies, const AABB& bound)
-            :mVertexFormat(vertex_format), mBound(bound), mVertices(std::move(vertices)), mIndicies(std::move(indicies)), mSubMeshes{SubMeshData::Whole(indicies.GetSize() / sizeof(IndexType))}
-        {
-        }
-
-        MeshData(EVertexFormat vertex_format, BinaryData vertices, BinaryData indicies, std::vector<SubMeshData> sub_meshes, const AABB& bound) 
-            :mVertexFormat(vertex_format), mBound(bound), mVertices(std::move(vertices)), mIndicies(std::move(indicies)), mSubMeshes(sub_meshes)
-        {
-        }
-
-        template<typename VertexType>
-        MeshData(EVertexFormat vertex_format, std::vector<VertexType>& vertices, std::vector<uint32>& indices, std::vector<SubMeshData> sub_meshes, const AABB& bound)
-            :mVertexFormat(vertex_format), mBound(bound), mSubMeshes(sub_meshes)
-        {
-            mVertices = BinaryData(vertices.data(), static_cast<uint32>(vertices.size() * sizeof(VertexType)));
-            mIndicies = BinaryData(indices.data(), static_cast<uint32>(indices.size() * sizeof(uint32)));
-        }
-
-        template<typename VertexType>
-        MeshData(EVertexFormat vertex_format, std::vector<VertexType>& vertices, std::vector<uint32>& indices, const AABB& bound)
-            :mVertexFormat(vertex_format), mBound(bound), mSubMeshes{ SubMeshData::Whole(static_cast<uint32>(indices.size())) }
-        {
-            mVertices = BinaryData(vertices.data(), static_cast<uint32>(vertices.size() * sizeof(VertexType)));
-            mIndicies = BinaryData(indices.data(), static_cast<uint32>(indices.size() * sizeof(uint32)));
-        }
-
-        ~MeshData() = default;
-
-        MeshData(const MeshData&) = delete;
-        MeshData(MeshData&&);
-        MeshData& operator=(MeshData);
-
-        inline const void* VerticesData() const 
-        {
-            return mVertices.GetData();
-        }
-
-        inline size_t VerticesCount() const
-        {
-            return mVertices.GetSize() / VertexStride();
-        }
-
-        inline size_t VertexStride() const
-        {
-            return GetVertexLayout(mVertexFormat).VertexSize;
-        }
-
-        inline const uint32* IndiciesData() const
-        {
-            return reinterpret_cast<uint32*>(mIndicies.GetData());
-        }
-
-        inline size_t IndiciesCount() const
-        {
-            return mIndicies.GetSize() / sizeof(uint32);
-        }
-
-        inline size_t GetSubMeshCount() const
-        {
-            return mSubMeshes.size();
-        }
-
-        inline const SubMeshData& GetSubMesh(uint32 index) const
-        {
-            return mSubMeshes[index];
-        }
-
-        inline const std::vector<SubMeshData>& GetSubMeshData() const 
-        {
-            return mSubMeshes;
-        }
-
-        inline EVertexFormat GetFormat() const
-        {
-            return mVertexFormat;
-        }
-
-        friend void Swap(MeshData& lhs, MeshData& rhs) 
-        {
-            using std::swap;
-            swap(lhs.mVertexFormat, rhs.mVertexFormat);
-            swap(lhs.mIndicies, rhs.mIndicies);
-            swap(lhs.mVertices, rhs.mVertices);
-            swap(lhs.mSubMeshes, rhs.mSubMeshes);
-            swap(lhs.mBound, rhs.mBound);
-        }
-
-    public:
-        EVertexFormat mVertexFormat;
-        AABB mBound;
-        BinaryData mVertices;
-        BinaryData mIndicies;
-        std::vector<SubMeshData> mSubMeshes;
-    };
-
-    struct TextureInfo 
-    {
-        uint16 Width;
-        uint16 Height;
-        ETextureFormat Format;
-
-        bool operator==(const TextureInfo& other) const = default;
-    };
-
-    class TextureData
-    {
-    public:
-        TextureData() 
-            :mInfo{ .Width = 0, .Height = 0, .Format = ETextureFormat_None }
-        {
-        }
-
-        TextureData(uint16 height, uint16 width, ETextureFormat format)
-            :mInfo{.Width = width, .Height = height, .Format = format}, mData(TextureSize())
-        {
-            ASSERT((height % 4) == 0 && (width % 4) == 0);
-        }
-
-        TextureData(BinaryData binary_data, uint16 height, uint16 width, ETextureFormat format)
-            :
-            mInfo{.Width = width, .Height = height, .Format = format} , mData(std::move(binary_data))
-        {
-            // BC1 requires the width and height must be a multiple of 4
-            ASSERT((height % 4) == 0 && (width % 4) == 0);
-            ASSERT(TextureSize() == mData.GetSize());
-        }
-
-        ~TextureData() = default;
-
-        TextureData(const TextureData& other) = delete;
-        TextureData(TextureData&& other);
-        TextureData& operator=(TextureData other);
-
-        // sample pixel on (u, v)
-        Vector4 Sample(float u, float v) const;
-        // set pixel on (u, v)
-        void SetPixel(uint32 u, uint32 v, const Vector4& color);
-        uint32 PixelSize() const;
-        
-        inline uint32 TextureSize() const{ return mInfo.Width * mInfo.Height * PixelSize();}
-        inline uint32 ChannelCount() const { return GetChannelCount(mInfo.Format);}
-        inline ETextureFormat Format() const { return mInfo.Format; }
-        inline uint32 Width() const { return mInfo.Width; }
-        inline uint32 Height() const { return mInfo.Height; }
-
-        friend void Swap(TextureData& lhs, TextureData& rhs)
-        {
-            Swap(lhs.mData, rhs.mData);
-            std::swap(lhs.mInfo, rhs.mInfo);
-        }
-
-    public:
-        static void BinarySerialize(RingBuffer& rb, const TextureData& texture_data);
-        static void BinaryDeserialize(RingBuffer& rb, TextureData& out_texture_data);
-
-        // theta: angle between y-axis phi: angle between x-axis
-        static Vector4 SampleTextureCube(const std::array<TextureData, 6>& data, float theta, float phi);
-
-    public:
-        TextureInfo mInfo;
-        BinaryData mData;
-    };
 
     class IResource
     {
@@ -305,6 +76,7 @@ namespace MRenderer
         inline const MeshData& GetMeshData() const { return mMeshData; }
         DeviceVertexBuffer* GetVertexBuffer() { return mDeviceVertexBuffer.get();}
         DeviceIndexBuffer* GetIndexBuffer() { return mDeviceIndexBuffer.get();}
+        inline const AABB& GetBound() const { return mMeshData.mBound; }
 
         void PostDeserialized();
 
@@ -401,69 +173,6 @@ namespace MRenderer
         std::shared_ptr<DeviceTexture2DArray> mDeviceTexture2DArray;
     };
 
-    struct ShaderParameter
-    {
-        ShaderParameter()
-            : mType(EShaderParameter_Vec1)
-        {
-        }
-
-    public:
-        template<typename T>
-        T Value()
-        {
-            if constexpr (std::is_same_v<T, float>)
-            {
-                ASSERT(mType == EShaderParameter_Vec1);
-                return mData.vec1;
-            }
-            else if constexpr (std::is_same_v<T, Vector2>)
-            {
-                ASSERT(mType == EShaderParameter_Vec2);
-                return mData.vec2;
-            }
-            else if constexpr (std::is_same_v<T, Vector3>)
-            {
-                ASSERT(mType == EShaderParameter_Vec3);
-                return mData.vec3;
-            }
-            else if constexpr (std::is_same_v<T, Vector4>)
-            {
-                ASSERT(mType == EShaderParameter_Vec4);
-                return mData.vec4;
-            }
-            else
-            {
-                static_assert(False<T>::value);
-            }
-        }
-
-        static void JsonSerialize(nlohmann::json& json, const ShaderParameter& t);
-        static void JsonDeserialize(nlohmann::json& json, ShaderParameter& t);
-
-    protected:
-        enum EShaderParameter : uint8
-        {
-            EShaderParameter_Vec1,
-            EShaderParameter_Vec2,
-            EShaderParameter_Vec3,
-            EShaderParameter_Vec4,
-            EShaderParameter_Total,
-        } mType;
-
-        union ParameterData
-        {
-            float vec1;
-            Vector2 vec2;
-            Vector3 vec3;
-            Vector4 vec4;
-
-            ParameterData()
-                : vec4{}
-            {
-            }
-        } mData;
-    };
 
     class ShadingState;
     class MaterialResource : public IResource 
@@ -491,10 +200,38 @@ namespace MRenderer
         void SetTexture(std::string_view semantic_name, const std::shared_ptr<TextureResource>& texture_resource);
 
         inline ShadingState* GetShadingState() { return mShadingState.get(); };
-        ShaderParameter GetShaderParameter(const std::string& name);
+        std::optional<ShaderParameter> GetShaderParameter(const std::string& name);
 
         void PostSerialized() const;
         void PostDeserialized();
+
+        // copy shader parameters value in this material to @t
+        // basically just query constant buffer reflection and do the memcpy
+        template<typename T>
+        void ApplyShaderParameter(T& t, D3D12ShaderProgram* program, std::string_view constant_buffer_name)
+        {
+            const ShaderConstantBufferAttribute* constant_buffer = program->GetPrimaryShader()->FindConstantBufferAttribute(constant_buffer_name);
+            for (auto& it : mParameterTable)
+            {
+                const ShaderConstantBufferVarriable* var = constant_buffer->GetVarialbe(it.first);
+                if (!var)
+                {
+                    Log(std::format("Unknow Shader Parameter: {}, Material File:{}", it.first, mRepoPath));
+                    continue;
+                }
+
+                ASSERT((var->mOffset + var->mSize <= sizeof(T)) && "Inconsistant Constant Buffer Defination");
+
+                std::visit(
+                    [&](auto&& value)
+                    {
+                        void* var_addr = reinterpret_cast<uint8*>(&t) + var->mOffset;
+                        memcpy(var_addr, &value, var->mSize);
+                    }, 
+                    it.second.mData
+                );
+            }
+        }
 
     public:
         // serializable member
@@ -530,7 +267,7 @@ namespace MRenderer
         }
 
         inline MaterialResource* GetMaterial(uint32 index) { return mMaterials[index].get();}
-        inline const AABB& GetBound() const { return mMeshResource->mMeshData.mBound; }
+        inline const AABB& GetBound() const { return mMeshResource->GetBound(); }
         inline MeshResource* GetMeshResource() { return mMeshResource.get(); }
         
         void PostSerialized() const;
@@ -543,10 +280,9 @@ namespace MRenderer
         // serializable member
         std::string mMeshPath;
         std::vector<std::string> mMaterialPath;
-        
+
         // runtime member
         std::shared_ptr<MeshResource> mMeshResource;
         std::vector<std::shared_ptr<MaterialResource>> mMaterials;
     };
-
 }

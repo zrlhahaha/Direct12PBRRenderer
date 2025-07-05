@@ -38,6 +38,7 @@ namespace MRenderer{
     void SceneModel::SetModel(const std::shared_ptr<ModelResource>& res)
     {
         mModel = res;
+        mLocalBound = res->GetBound();
         mModelFilePath = res->GetRepoPath();
     }
 
@@ -47,7 +48,7 @@ namespace MRenderer{
 
         if (!mModel)
         {
-            mModel = ResourceLoader::Instance().LoadResource<ModelResource>(mModelFilePath);
+            SetModel(ResourceLoader::Instance().LoadResource<ModelResource>(mModelFilePath));
         }
     }
 
@@ -87,12 +88,12 @@ namespace MRenderer{
 
         for (int i = 0; i < mSceneModel.size(); i++) 
         {
-            AddOctreeElementInternal(mOctreeSceneModel, mSceneModel[i], i);
+            AddOctreeElementInternal(mOctreeSceneModel, *mSceneModel[i], i);
         }
 
         for (int i = 0; i < mSceneLight.size(); i++)
         {
-            AddOctreeElementInternal(mOctreeSceneLight, mSceneLight[i], i);
+            AddOctreeElementInternal(mOctreeSceneLight, *mSceneLight[i], i);
         }
     }
 }

@@ -9,7 +9,7 @@
 Texture2D LuminanceTexture : register(t0);
 RWStructuredBuffer<uint> LuminanceHistogram : register(u0);
 
-cbuffer ShaderConstant : register(b0)
+cbuffer CONSTANT_BUFFER_SHADER : register(b0)
 {
     uint TextureWidth;
     uint TextureHeight;
