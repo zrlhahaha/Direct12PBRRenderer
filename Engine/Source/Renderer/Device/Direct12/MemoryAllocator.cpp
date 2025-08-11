@@ -196,89 +196,149 @@ namespace MRenderer
     namespace D3D12Memory
     {
         MemoryAllocator::MemoryAllocator(ID3D12Device* device)
-            :mMeta{
-                MetaAllocator(HeapSize) ,MetaAllocator(HeapSize) ,MetaAllocator(HeapSize),
-                MetaAllocator(HeapSize), MetaAllocator(HeapSize) ,MetaAllocator(HeapSize),
-                MetaAllocator(HeapSize), MetaAllocator(HeapSize) ,MetaAllocator(HeapSize)
-            }, mDevice(device)
+            : mDevice(device), mHeapAllocator(device)
         {
-            for (size_t usage_index = 0; usage_index < EHeapUsage_TotalUsage; usage_index++)
-            {
-                for (size_t type_index = 0; type_index < HeapTypeTotal; type_index++)
-                {
-                    EHeapUsage usage = static_cast<EHeapUsage>(usage_index);
-                    D3D12_HEAP_DESC heap_desc;
-                    heap_desc.SizeInBytes = HeapSize;
-
-                    // heap alignment will always be D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT (i.e 64KB)
-                    // for MSAA textures which requires 4MB alignment, they will be allocated as commited resources
-                    heap_desc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-
-                    heap_desc.Properties = D3D12_HEAP_PROPERTIES{ .Type = HeapType[type_index] };
-
-                    // heap_desc
-                    if (usage == EHeapUsage_Non_RT_DS_Textures)
-                        heap_desc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES;
-                    else if (usage == EHeapTypeUsage_RT_DS_Textures)
-                        heap_desc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES;
-                    else if (usage == EHeapUsage_Buffer)
-                        heap_desc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
-                    else
-                        ASSERT(false || "Unexpect");
-
-                    ThrowIfFailed(
-                        mDevice->CreateHeap(
-                            &heap_desc,
-                            IID_PPV_ARGS(&mHeap[HeapIndex(static_cast<EHeapUsage>(usage_index), HeapType[type_index])])
-                        )
-                    );
-                }
-            }
         }
 
         MemoryAllocator::~MemoryAllocator()
         {
         }
 
-
-        MemoryAllocation* MemoryAllocator::Allocate(AllocationDesc desc, bool placed)
+        MemoryAllocation* MemoryAllocator::Allocate(AllocationDesc desc)
         {
-            if (!placed)
+            MemoryAllocation* ret = mAllocationAllocator.Allocate();
+
+            if (desc.prefer_commited)
             {
-                return AllocateCommitedResouce(desc);
+                ret->Allocation = AllocateCommitedResouce(desc);
             }
             else
             {
-                D3D12_RESOURCE_ALLOCATION_INFO info = QueryResourceSizeAndAlignment(desc.resource_desc);
-                MemoryAllocation* ret = AllocatePlacedResource(desc, static_cast<uint32>(info.SizeInBytes), static_cast<uint32>(info.Alignment));
-
-                // fallback to commited resource
-                if (!ret)
+                PlacedAllocation placed_allocation = mHeapAllocator.Allocate(desc);
+                if (placed_allocation.Valid()) 
                 {
-                    ret = AllocateCommitedResouce(desc);
+                    ret->Allocation = placed_allocation;
                 }
-
-                return ret;
+                else 
+                {
+                    ret->Allocation = AllocateCommitedResouce(desc);
+                }
             }
+
+            ret->Source = this;
+            return ret;
         }
 
-        void MemoryAllocator::Free(MemoryAllocation* allocation)
+        void MemoryAllocator::Free(MemoryAllocation*& allocation)
         {
-            if (allocation->type == EMemoryAllocationType_Commited)
+            Overload overloads
             {
-                FreeCommitedResource(allocation);
-            }
-            else if (allocation->type == EMemoryAllocationType_Placed)
-            {
-                FreePlacedResource(allocation);
-            }
-            else
-            {
-                UNEXPECTED("Allocation Object Is Contaminated");
-            }
+                [&](CommitedAllocation& allocation) {allocation.Resource->Release(); },
+                [&](PlacedAllocation& allocation) {mHeapAllocator.Free(allocation); },
+            };
+
+            std::visit(overloads, allocation->Allocation);
+            mAllocationAllocator.Free(allocation);
         }
 
-        D3D12_RESOURCE_ALLOCATION_INFO MemoryAllocator::QueryResourceSizeAndAlignment(D3D12_RESOURCE_DESC& desc)
+        CommitedAllocation MemoryAllocator::AllocateCommitedResouce(const AllocationDesc& desc)
+        {
+            ID3D12Resource* res;
+            auto heap_property = CD3DX12_HEAP_PROPERTIES(desc.heap_type);
+
+            bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+
+            ThrowIfFailed(mDevice->CreateCommittedResource(
+                &heap_property,
+                D3D12_HEAP_FLAG_NONE,
+                &desc.resource_desc,
+                desc.initial_state,
+                use_default_value ? &desc.defalut_value : nullptr,
+                IID_PPV_ARGS(&res)
+            ));
+
+            CommitedAllocation allocation = {};
+            allocation.Resource = res;
+
+            return allocation;
+        }
+
+        HeapMemoryAllocator::HeapMemoryAllocator(ID3D12Device* device, D3D12_HEAP_TYPE heap_type, D3D12_HEAP_FLAGS heap_flag)
+            :mDevice(device), mHeapFlag(heap_flag), mHeapType(heap_type)
+        {
+        }
+
+        PlacedAllocation HeapMemoryAllocator::Allocate(const AllocationDesc& desc)
+        {
+            ASSERT(desc.heap_type == mHeapType);
+            ASSERT(GetResourceHeapFlag(desc.resource_desc) == mHeapFlag);
+
+            D3D12_RESOURCE_ALLOCATION_INFO info = QueryResourceSizeAndAlignment(desc.resource_desc);
+
+            auto[heap_index, meta_allocation] = MetaAllocate(desc,static_cast<uint32>(info.SizeInBytes), static_cast<uint32>(info.Alignment));
+            if(heap_index == -1)
+            {
+                return {};
+            }
+
+            bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+
+            ID3D12Resource* resource;
+            ThrowIfFailed
+            (
+                mDevice->CreatePlacedResource(
+                    mPages[heap_index].Get(),
+                    meta_allocation->offset,
+                    &desc.resource_desc,
+                    desc.initial_state,
+                    use_default_value ? &desc.defalut_value : nullptr,
+                    IID_PPV_ARGS(&resource)
+                )
+            );
+
+            PlacedAllocation ret = {};
+            ret.PageIndex = heap_index;
+            ret.Resource = resource;
+            ret.MetaAllocation = meta_allocation;
+
+            return ret;
+        }
+
+        void HeapMemoryAllocator::Free(PlacedAllocation& allocation)
+        {
+            ASSERT(allocation.Resource && allocation.PageIndex && allocation.Source == this);
+
+            mPagesMeta[allocation.PageIndex].Free(allocation.MetaAllocation);
+            allocation.Resource->Release();
+
+            allocation = {};
+        }
+
+        void HeapMemoryAllocator::AliasFree(PlacedAllocation& allocation)
+        {
+            ASSERT(allocation.Resource && allocation.PageIndex && allocation.Source == this);
+
+            mPagesMeta[allocation.PageIndex].Free(allocation.MetaAllocation);
+        }
+
+        ComPtr<ID3D12Heap> HeapMemoryAllocator::CreateGPUHeap(D3D12_HEAP_TYPE heap_type, D3D12_HEAP_FLAGS heap_flag)
+        {
+            D3D12_HEAP_DESC heap_desc;
+            heap_desc.SizeInBytes = DeviceHeapPageSize;
+
+            // heap alignment will always be D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT (i.e 64KB)
+            // for MSAA textures which requires 4MB alignment, they will be allocated as commited resources
+            heap_desc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+            heap_desc.Properties = D3D12_HEAP_PROPERTIES{ .Type = heap_type };
+            heap_desc.Flags = heap_flag;
+
+            ID3D12Heap* heap;
+            ThrowIfFailed(mDevice->CreateHeap(&heap_desc, IID_PPV_ARGS(&heap)));
+
+            return heap;
+        }
+
+        D3D12_RESOURCE_ALLOCATION_INFO HeapMemoryAllocator::QueryResourceSizeAndAlignment(D3D12_RESOURCE_DESC desc)
         {
             // refered from: https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
             // AllocatorPimpl::GetResourceAllocationInfo
@@ -309,101 +369,108 @@ namespace MRenderer
             return mDevice->GetResourceAllocationInfo(0, 1, &desc);
         }
 
-        MemoryAllocation* MemoryAllocator::AllocateCommitedResouce(const AllocationDesc& desc)
+        std::tuple<int, MetaAllocation*> HeapMemoryAllocator::MetaAllocate(const AllocationDesc& desc, uint32 size, uint32 alignment)
         {
-            ID3D12Resource* res;
-            auto heap_property = CD3DX12_HEAP_PROPERTIES(desc.heap_type);
+            if (size > DeviceHeapPageSize) 
+            {
+                return { -1, nullptr };
+            }
 
-            bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+            // find out where to allocate
+            for (uint32 i = 0; i < mPagesMeta.size(); i++)
+            {
+                MetaAllocation* allocation_info = mPagesMeta[i].Allocate(size, alignment);
+                if (allocation_info)
+                {
+                    return { i, allocation_info };
+                }
+            }
 
-            ThrowIfFailed(mDevice->CreateCommittedResource(
-                &heap_property,
-                D3D12_HEAP_FLAG_NONE,
-                &desc.resource_desc,
-                desc.initial_state,
-                use_default_value ? &desc.defalut_value : nullptr,
-                IID_PPV_ARGS(&res)
-            ));
+            mPages.emplace_back(CreateGPUHeap(mHeapType, mHeapFlag));
+            mPagesMeta.emplace_back(DeviceHeapPageSize);
 
-            MemoryAllocation* allocation = mAllocationAllocator.Allocate();
-            auto& commited_allocation = allocation->data.commited_allocation;
+            MetaAllocation* allocation_info = mPagesMeta.back().Allocate(size, alignment);
+            ASSERT(allocation_info);
 
-            commited_allocation.resource = res;
-            allocation->type = EMemoryAllocationType_Commited;
-            allocation->source = this;
-
-            return allocation;
+            return {static_cast<uint32>(mPagesMeta.size() - 1), allocation_info};
         }
 
-        MemoryAllocation* MemoryAllocator::AllocatePlacedResource(const AllocationDesc& desc, uint32 size, uint32 alignment)
+        D3D12_HEAP_FLAGS HeapMemoryAllocator::GetResourceHeapFlag(const D3D12_RESOURCE_DESC& desc)
         {
             // allocated as placed resource
-            EHeapUsage heap_usage;
-            if (desc.resource_desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+            D3D12_HEAP_FLAGS heap_flag;
+            if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
             {
-                heap_usage = EHeapUsage_Buffer;
+                heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
             }
-            else if (desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))
+            else if (desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))
             {
-                heap_usage = EHeapTypeUsage_RT_DS_Textures;
+                heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES;
             }
             else
             {
-                heap_usage = EHeapUsage_Non_RT_DS_Textures;
+                heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES;
             }
+        }
 
-            uint32 heap_index = HeapIndex(heap_usage, desc.heap_type);
-            auto meta_allocation = mMeta[heap_index].Allocate(size, alignment);
-            if (!meta_allocation)
+        MultiHeapMemoryAllocator::MultiHeapMemoryAllocator(ID3D12Device* device)
+            :mDevice(device)
+        {
+            for (uint32 i = 0; i < std::size(DeviceHeapTypes); i++)
             {
-                // out of memory or the size is too large
-                return nullptr;
+                for (uint32 j = 0; j < std::size(DeviceHeapFlags); j++)
+                {
+                    D3D12_HEAP_TYPE heap_type = DeviceHeapTypes[i];
+                    D3D12_HEAP_FLAGS heap_flag = DeviceHeapFlags[j];
+
+                    mHeaps.emplace_back(device, heap_type, heap_flag);
+                }
+            }
+        }
+
+        PlacedAllocation MultiHeapMemoryAllocator::Allocate(AllocationDesc desc)
+        {
+            // allocated as placed resource
+            D3D12_HEAP_FLAGS heap_flag;
+            if (desc.resource_desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+            {
+                heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
+            }
+            else if (desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))
+            {
+                heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES;
+            }
+            else
+            {
+                heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES;
             }
 
-            bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+            // find out where to allocate
+            uint32 heap_index = HeapIndex(desc.heap_type, heap_flag);
+            PlacedAllocation ret = mHeaps[heap_index].Allocate(desc);
 
-            ID3D12Resource* resource;
-            ThrowIfFailed(mDevice->CreatePlacedResource(mHeap[heap_index].Get(), meta_allocation->offset, &desc.resource_desc,
-                desc.initial_state, use_default_value ? &desc.defalut_value : nullptr, IID_PPV_ARGS(&resource)));
-
-            MemoryAllocation* allocation = mAllocationAllocator.Allocate();
-
-            allocation->type = EMemoryAllocationType_Placed;
-            allocation->source = this;
-
-            auto& placed_allocation = allocation->data.placed_allocation;
-            placed_allocation.heap_index = heap_index;
-            placed_allocation.resource = resource;
-            placed_allocation.meta_allocation = meta_allocation;
-
-            return allocation;
+            return ret;
         }
 
-        void MemoryAllocator::FreeCommitedResource(MemoryAllocation* allocation)
+        void MultiHeapMemoryAllocator::Free(PlacedAllocation& allocation)
         {
-            ASSERT(allocation->source == this && allocation->type == EMemoryAllocationType_Commited && allocation->Resource());
-
-            auto& commited_allocation = allocation->data.commited_allocation;
-            commited_allocation.resource->Release();
-            commited_allocation.resource = nullptr;
-            allocation->source = nullptr;
-
-            mAllocationAllocator.Free(allocation);
+            ASSERT(allocation.Resource && allocation.Source);
+            allocation.Source->Free(allocation);
         }
 
-        void MemoryAllocator::FreePlacedResource(MemoryAllocation* allocation)
+        void MultiHeapMemoryAllocator::AliasFree(PlacedAllocation& allocation)
         {
-            auto& placed_allocation = allocation->data.placed_allocation;
-            ASSERT(allocation->source == this && allocation->type == EMemoryAllocationType_Placed && allocation->Resource() && placed_allocation.meta_allocation);
+        }
 
-            mMeta[placed_allocation.heap_index].Free(placed_allocation.meta_allocation);
-            placed_allocation.resource->Release();
+        inline uint32 MultiHeapMemoryAllocator::HeapIndex(D3D12_HEAP_TYPE heap_type, D3D12_HEAP_FLAGS heap_flag)
+        {
+            int b = (heap_flag >> 6) - 1; // DeviceHeapFlags = [01000100, 10000100, 11000000], we can get the index by shift D3D12_HEAP_FLAGS to the right by 6 bits and minus 1
+            int a = heap_type - DeviceHeapTypes[0];
 
-            placed_allocation.meta_allocation = nullptr;
-            placed_allocation.resource = nullptr;
-            allocation->source = nullptr;
+            int ret = static_cast<int>(a * std::size(DeviceHeapTypes) + b);
+            ASSERT(ret < DeviceHeapCount && ret >= 0);
 
-            mAllocationAllocator.Free(allocation);
+            return ret;
         }
     }
 }

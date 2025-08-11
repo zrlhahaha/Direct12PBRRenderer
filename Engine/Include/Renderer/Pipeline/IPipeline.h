@@ -25,9 +25,9 @@ namespace MRenderer
         {
             uint16 Width;
             uint16 Height;
+            uint16 MipLevels = 0;
             ETextureFormat Format;
             uint8 Padding1 = 0;
-            uint16 Padding2 = 0;
         } Info;
         uint64 Key;
 
@@ -36,8 +36,8 @@ namespace MRenderer
         {
         }
 
-        TextureFormatKey(uint16 width, uint16 height, ETextureFormat format)
-            :Info{ width, height, format }
+        TextureFormatKey(uint16 width, uint16 height, uint16 mip_levels, ETextureFormat format)
+            :Info{ width, height, mip_levels, format }
         {
         }
 
@@ -255,7 +255,9 @@ namespace MRenderer
 
         void SetShader(std::string_view shader_file_path, bool is_compute);
         bool SetTexture(std::string_view semantic_name, DeviceTexture* texture);
+        bool SetTexture(std::string_view semantic_name, DeviceTexture2D* texture, uint32 mip_slice);
         bool SetRWTexture(std::string_view semantic_name, DeviceTexture2D* texture);
+        bool SetRWTexture(std::string_view semantic_name, DeviceTexture2D* texture, uint32 mip_slice);
         bool SetRWTextureArray(std::string_view semantic_name, DeviceTexture2DArray* texture);
         bool SetStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer);
         bool SetRWStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer);
@@ -278,6 +280,9 @@ namespace MRenderer
             swap(lhs.mShaderProgram, rhs.mShaderProgram);
             swap(lhs.mShaderConstantBuffer, rhs.mShaderConstantBuffer);
         }
+
+    protected:
+        const ShaderAttribute* FindShaderAttribute(EShaderAttrType type, std::string_view semantic_name);
 
     protected:
         ResourceBinding mResourceBinding;
@@ -359,7 +364,7 @@ namespace MRenderer
             // for transient resource, refer to a trasient resource in RenderTargetPool
             struct 
             {
-                IDeviceResource* Resource; // may be render target or depth stencil
+                DeviceTexture2D* Resource;
                 TextureFormatKey RenderTargetKey;
                 uint32 Index;
             } TransientResource;
@@ -405,7 +410,7 @@ namespace MRenderer
         void WriteDepthStencil(RenderPassNode* node);
 
         // delcare a persisten resource as pass output
-        void WritePersistent(std::string_view name, IDeviceResource* persisten_resource);
+        void WritePersistent(std::string_view name, DeviceTexture* persisten_resource);
 
         RenderPassNode* FindOutput(std::string_view name); 
         RenderPassNode* FindInput(std::string_view name);

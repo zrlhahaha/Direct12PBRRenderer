@@ -529,32 +529,11 @@
         },
         {
             "@SceneObject": {
-                "mName": "rust_sphere",
-                "mTranslation": {
-                    "x": -10.0,
-                    "z": 5,
-                    "y": 2.0
-                },
-                "mRotation": {
-                    "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
-                },
-                "mScale": {
-                    "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
-                }
-            },
-            "mModelFilePath": "Asset/Model/Sphere/RustSteel/rust_sphere_model"
-        },
-        {
-            "@SceneObject": {
                 "mName": "revolver",
                 "mTranslation": {
                     "x": 0,
                     "z": 0,
-                    "y": 2.0
+                    "y": 1.0
                 },
                 "mRotation": {
                     "x": 0.0,
@@ -568,6 +547,90 @@
                 }
             },
             "mModelFilePath": "Asset/Model/Revolver/Revolver_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "suitcase",
+                "mTranslation": {
+                    "x": 2.0,
+                    "z": 0,
+                    "y": 0.2
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 2.0,
+                    "z": 2.0,
+                    "y": 2.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/Suitcase/Suitcase_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "rock",
+                "mTranslation": {
+                    "x": -3.0,
+                    "z": -5,
+                    "y": 1.2
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mModelFilePath": "Asset/Model/Rock/Rock_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "barrel",
+                "mTranslation": {
+                    "x": 3.0,
+                    "z": 0,
+                    "y": 0.8
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 2.0,
+                    "z": 2.0,
+                    "y": 2.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/Barrel/Barrel_Model"
+        },
+        {
+            "@SceneObject": {
+                "mName": "tile",
+                "mTranslation": {
+                    "x": 0.0,
+                    "z": 0,
+                    "y": 0.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 100.0,
+                    "z": 100.0,
+                    "y": 100.0
+                }
+            },
+            "mModelFilePath": "Asset/Model/Tile/Tile_Model"
         }
     ],
     "mSkyBoxPath": "Asset/SkyBox/HDRWild"

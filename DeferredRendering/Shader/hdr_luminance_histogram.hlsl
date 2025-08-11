@@ -1,3 +1,5 @@
+# include "global.hlsli"
+
 #define NUM_HISTOGRAM_BINS 256
 #define HISTOGRAM_THREAD_GROUP_SIZE 16
 
@@ -16,11 +18,6 @@ cbuffer CONSTANT_BUFFER_SHADER : register(b0)
     float MinLogLuminance;
     float InvLogLuminanceRange; 
 };
-
-float luminance(float3 hdr_color)
-{
-    return dot(hdr_color, float3(0.2126, 0.7152, 0.0722));
-}
 
 groupshared uint HistogramShared[NUM_HISTOGRAM_BINS];
 

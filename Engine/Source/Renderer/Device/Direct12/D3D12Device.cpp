@@ -236,7 +236,7 @@ namespace MRenderer
         return std::make_shared<DeviceVertexBuffer>(std::move(resource), vbv);
     }
 
-    std::shared_ptr<DeviceIndexBuffer> D3D12Device::CreateIndexBuffer(const uint32* data, uint32 data_size)
+    std::shared_ptr<DeviceIndexBuffer> D3D12Device::CreateIndexBuffer(const void* data, uint32 data_size)
     {  
         ASSERT(data_size % sizeof(IndexType) == 0);
 
@@ -296,18 +296,65 @@ namespace MRenderer
         return resource;
     }
 
-    std::shared_ptr<DeviceTexture2D> D3D12Device::CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access/*= false*/, uint32 mip_chain_mem_size/*=0*/, const void* mip_chain/*=nullptr*/)
+    std::shared_ptr<DeviceTexture2D> D3D12Device::CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, ETexture2DFlag flag, uint32 mip_chain_mem_size/*=0*/, const void* mip_chain/*=nullptr*/)
     {
         ASSERT(format != ETextureFormat_DepthStencil);
-        DXGI_FORMAT dxgi_format = static_cast<DXGI_FORMAT>(format);
 
+        // determine format
+        DXGI_FORMAT dxgi_format, srv_format = {};
+        if (!(flag & ETexture2DFlag::ETexture2DFlag_AllowDepthStencil))
+        {
+            dxgi_format = static_cast<DXGI_FORMAT>(format);
+            srv_format = dxgi_format;
+        }
+        else
+        {
+            dxgi_format = DepthStencilFormat;
+            srv_format = DepthStencilSRVFormat;
+        }
+
+        // determine initial state
         D3D12_RESOURCE_STATES res_state = mip_chain ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_COMMON;
+        mip_level = mip_level <= 0 ? CalculateMaxMipLevels(width, height) : mip_level;
+
+        // determine resource flat
+        D3D12_RESOURCE_FLAGS resource_flag = {};
+        if (flag & ETexture2DFlag_AllowRenderTarget)
+        {
+            ASSERT(!(flag & ETexture2DFlag_AllowDepthStencil));
+            resource_flag |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        }
+
+        if (flag & ETexture2DFlag::ETexture2DFlag_AllowDepthStencil)
+        {
+            ASSERT(!(flag & ETexture2DFlag_AllowRenderTarget));
+            resource_flag |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        }
+
+        if (flag & ETexture2DFlag::ETexture2DFlag_AllowUnorderedAccess)
+        {
+            resource_flag |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        }
+
+        ASSERT(dxgi_format != ETextureFormat_None);
+
+        // determine clear value
+        D3D12_CLEAR_VALUE clear_value = {};
+        if (flag & ETexture2DFlag_AllowRenderTarget)
+        {
+            clear_value = D3D12_CLEAR_VALUE{ .Format = dxgi_format, .Color = {0.0, 0.0, 0.0, 0.0} };
+        }
+        else if (flag & ETexture2DFlag_AllowDepthStencil) 
+        {
+            clear_value = D3D12_CLEAR_VALUE{ .Format = DepthStencilFormat, .DepthStencil = D3D12_DEPTH_STENCIL_VALUE{1.0, 0} };
+        }
 
         // allocate 2d texture
         AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 1, mip_level, 1, 0, unorder_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 1, mip_level, 1, 0, resource_flag),
             .heap_type = D3D12_HEAP_TYPE_DEFAULT,
             .initial_state = res_state,
+            .defalut_value = clear_value,
         };
 
         MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
@@ -316,25 +363,80 @@ namespace MRenderer
         // srv descriptor
         D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
         {
-            .Format = dxgi_format,
+            .Format = srv_format,
             .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
             .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
             .Texture2D{
-                .MipLevels = mip_level
+                .MostDetailedMip = 0,
+                .MipLevels = mip_level,
             }
         };
         resource->SetShaderResourceView(CreateShaderResourceView(&srv_desc, resource->Resource()));
 
-        // uav descriptor 
-        if (unorder_access) 
+        // mipmap srv descriptor
+        for (uint32 i = 0; i < mip_level; i++) 
         {
-            D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
             {
-                .Format = dxgi_format,
-                .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D,
-                .Texture2D = {}
+                .Format = srv_format,
+                .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+                .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                .Texture2D{
+                    .MostDetailedMip = i,
+                    .MipLevels = 1,
+                }
             };
-            resource->SetUnorderedAccessView(CreateUnorderedAccessView(&uav_desc, resource->Resource()));
+            resource->SetMipSliceSRV(i, CreateShaderResourceView(&srv_desc, resource->Resource()));
+        }
+
+        // uav descriptor 
+        if (flag & ETexture2DFlag::ETexture2DFlag_AllowUnorderedAccess)
+        {
+            for (uint32 i = 0; i < mip_level; i++) 
+            {
+                D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc
+                {
+                    .Format = dxgi_format,
+                    .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D,
+                    .Texture2D = 
+                    {
+                        .MipSlice = i,
+                        .PlaneSlice = 0,
+                    }
+                };
+
+                // set most detailed mip slice as the default uav
+                if (i == 0) 
+                {
+                    resource->SetUnorderedAccessView(CreateUnorderedAccessView(&uav_desc, resource->Resource()));
+                }
+
+                resource->SetMipSliceUAV(i, CreateUnorderedAccessView(&uav_desc, resource->Resource()));
+            }
+        }
+
+        // rtv descriptor
+        if (flag & ETexture2DFlag_AllowRenderTarget)
+        {
+            D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {
+                .Format = dxgi_format,
+                .ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D,
+            };
+            resource->SetRenderTargetView(CreateRenderTargetView(&rtv_desc, resource->Resource()));
+        }
+
+        // dsv descriptor
+        if (flag & ETexture2DFlag_AllowDepthStencil)
+        {
+            D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc =
+            {
+                .Format = DepthStencilFormat,
+                .ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D,
+                .Texture2D = {
+                    .MipSlice = 0,
+                }
+            };
+            resource->SetDepthStencilView(CreateDepthStencilView(&dsv_desc, resource->Resource()));
         }
 
         // upload initial_data to gpu if it's provided
@@ -376,6 +478,7 @@ namespace MRenderer
 
         if (unorder_access) 
         {
+            // generate mip slice uav descriptor
             ASSERT(mip_level > 0);
             for (uint32 i = 0; i < mip_level; i++) 
             {
@@ -392,7 +495,8 @@ namespace MRenderer
                         .PlaneSlice = 0,
                     }
                 };
-                resource->SetUnorderedAccessView(i, CreateUnorderedAccessView(&uav_desc, resource->Resource()));
+
+                resource->SetMipSliceUAV(i, CreateUnorderedAccessView(&uav_desc, resource->Resource()));
             }
         }
 
@@ -448,78 +552,6 @@ namespace MRenderer
         cbuffer->SetConstantBufferView(std::move(cbv_array));
 
         return cbuffer;
-    }
-
-    std::shared_ptr<DeviceRenderTarget> D3D12Device::CreateRenderTarget(uint32 width, uint32 height, ETextureFormat format, D3D12_RESOURCE_STATES state)
-    {
-        // resource allocation
-        DXGI_FORMAT dxgi_format = static_cast<DXGI_FORMAT>(format);
-        AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
-            .heap_type = D3D12_HEAP_TYPE_DEFAULT,
-            .initial_state = state,
-            .defalut_value = D3D12_CLEAR_VALUE{.Format = dxgi_format, .Color = {0, 0, 0, 0}}
-        };
-
-        MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
-        auto resource = std::make_shared<DeviceRenderTarget>(D3D12Resource(allocation, state, nullptr));
-
-        // generate rtv
-        D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {
-            .Format = dxgi_format,
-            .ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D,
-        };
-        resource->SetRenderTargetView(CreateRenderTargetView(&rtv_desc, resource->Resource()));
-
-        // generate srv
-        D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
-        {
-            .Format = dxgi_format,
-            .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-            .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-            .Texture2D{
-                .MipLevels = 1
-            }
-        };
-        resource->SetShaderResourceView(CreateShaderResourceView(&srv_desc, resource->Resource()));
-        return resource;
-    }
-
-    std::shared_ptr<DeviceDepthStencil> D3D12Device::CreateDepthStencil(uint32 width, uint32 height, D3D12_RESOURCE_STATES state)
-    {
-        AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(DepthStencilFormat, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
-            .heap_type = D3D12_HEAP_TYPE_DEFAULT,
-            .initial_state = state,
-            .defalut_value = D3D12_CLEAR_VALUE{.Format = DepthStencilFormat, .DepthStencil = D3D12_DEPTH_STENCIL_VALUE{1.0, 0}}
-        };
-
-        MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
-        auto resource = std::make_shared<DeviceDepthStencil>(D3D12Resource(allocation, state, nullptr));
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc =
-        {
-            .Format = DepthStencilSRVFormat,
-            .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-            .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-            .Texture2D = 
-            {
-                .MipLevels = 1,
-            },
-        };
-        resource->SetShaderResourceView(CreateShaderResourceView(&srv_desc, resource->Resource()));
-
-        D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = 
-        {
-            .Format = DepthStencilFormat,
-            .ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D,
-            .Texture2D = {
-                .MipSlice = 0,
-            }
-        };
-        resource->SetDepthStencilView(CreateDepthStencilView(&dsv_desc, resource->Resource()));
-
-        return resource;
     }
 
     std::shared_ptr<PipelineStateObject> D3D12Device::CreateGraphicsPipelineStateObject(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program)
@@ -872,7 +904,7 @@ namespace MRenderer
 
     inline void D3D12Device::ClearResourceCache(uint32 frame_index)
     {
-        for (const auto& res : mResourceCache[frame_index])
+        for (auto& res : mResourceCache[frame_index])
         {
             res->Allocator()->Free(res);
         }

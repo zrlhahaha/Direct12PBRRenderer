@@ -166,6 +166,8 @@ namespace MRenderer
 
     void D3D12CommandList::ClearRenderTarget(RenderTargetView* view)
     {
+        ASSERT(!view->Empty());
+
         // ref frome MSDN: For ClearRenderTargetView, the state must be D3D12_RESOURCE_STATE_RENDER_TARGET.
         // rt barrier
         view->Resource()->TransitionBarrier(GetCommandList(), D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -177,6 +179,8 @@ namespace MRenderer
 
     void D3D12CommandList::ClearDepthStencil(DepthStencilView* view)
     {
+        ASSERT(!view->Empty());
+
         // ref frome MSDN: For ClearDepthStencilView, the state must be in the state D3D12_RESOURCE_STATE_DEPTH_WRITE.
         view->Resource()->TransitionBarrier(GetCommandList(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
         
@@ -189,6 +193,8 @@ namespace MRenderer
         std::array<D3D12_CPU_DESCRIPTOR_HANDLE, MaxRenderTargets> rt_descriptors;
         for (uint32 i = 0; i < num_rt; i++)
         {
+            ASSERT(!rtv_array[i]->Empty());
+
             rt_descriptors[i] = rtv_array[i]->Descriptor()->CPUDescriptorHandle();
             rtv_array[i]->Resource()->TransitionBarrier(GetCommandList(), D3D12_RESOURCE_STATE_RENDER_TARGET);
         }
@@ -196,6 +202,8 @@ namespace MRenderer
         // bind depth stencil
         if (dsv)
         {
+            ASSERT(!dsv->Empty());
+
             dsv->Resource()->TransitionBarrier(GetCommandList(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
             CD3DX12_CPU_DESCRIPTOR_HANDLE cpu_handle = dsv->Descriptor()->CPUDescriptorHandle();

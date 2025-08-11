@@ -210,19 +210,4 @@ namespace MRenderer{
 
 		return MeshData(EVertexFormat_P3F_N3F_T3F_C3F_T2F, vertices, indicies, AABB(min, max));
 	}
-
-	std::shared_ptr<ModelResource> DefaultResource::CreateStandardSphereModel(std::string_view repo_path)
-	{
-		using std::filesystem::path;
-
-		MeshData box_mesh = StandardSphereMesh();
-        std::shared_ptr<MeshResource> mesh = std::make_shared<MeshResource>((path(repo_path) / path("sphere_Mesh")).string(), std::move(box_mesh));
-
-		std::vector<std::shared_ptr<MaterialResource>> mats;
-		mats.push_back(std::make_shared<MaterialResource>((path(repo_path) / path("sphere_Mat")).string()));
-		mats[0]->SetShader("gbuffer.hlsl");
-
-		std::shared_ptr<ModelResource> model = std::make_shared<ModelResource>((path(repo_path) / path("sphere_Model")).string(), mesh, std::move(mats));
-		return model;
-	}
 }

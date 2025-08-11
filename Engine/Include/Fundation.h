@@ -14,7 +14,6 @@
 #define LIKELY [[likely]]
 #define UNLIKEYLY [[unlikely]]
 
-
 namespace MRenderer
 {
     typedef std::int32_t int32;

@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 
-
 Set(VENDOR_DIR ${CMAKE_SOURCE_DIR}/Vendor)
 Set(PROJECT_NAME Renderer)
 
 project(${PROJECT_NAME} LANGUAGES CXX)
 
+if(MSVC)
+    add_compile_options(/MP)
+endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

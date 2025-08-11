@@ -11,7 +11,7 @@ namespace MRenderer
 {
     inline uint32 CalculateDispatchSize(uint32 texture_size, uint32 thread_group_size)
     {
-        return static_cast<uint32>(std::ceil(static_cast<float>(texture_size) / static_cast<float>(thread_group_size)));
+        return AlignUp(texture_size, thread_group_size) / thread_group_size;
     }
 
     DeferredRenderPipeline::DeferredRenderPipeline()
@@ -24,6 +24,7 @@ namespace MRenderer
         mPrecomputeBRDFPass = std::make_unique<PrecomputeBRDFPass>();
         mToneMappingPass = std::make_unique<ToneMappingPass>();
         mPresentPass = std::make_unique<PresentPass>();
+        mBloomPass = std::make_unique<BloomPass>();
 
         SetPresentPass(mPresentPass.get());
     }
@@ -35,7 +36,8 @@ namespace MRenderer
         mPrecomputeBRDFPass->Connect();
         mDeferredShadingPass->Connect(mGBufferPass.get(), mPrefilterEnvMapPass.get(), mPrecomputeBRDFPass.get());
         mSkyboxPass->Connect(mGBufferPass.get(), mDeferredShadingPass.get());
-        mToneMappingPass->Connect(mSkyboxPass.get());
+        mBloomPass->Connect(mSkyboxPass.get());
+        mToneMappingPass->Connect(mBloomPass.get());
         mPresentPass->Connect(mToneMappingPass->FindOutput(ToneMappingPass::Output_ToneMappingRT));
     }
 
@@ -43,8 +45,8 @@ namespace MRenderer
     {
         static MeshData mesh = DefaultResource::StandardSphereMesh();
 
-        mBoxIndexBuffer = GD3D12Device->CreateIndexBuffer(mesh.IndiciesData(), mesh.IndiciesCount() * sizeof(IndexType));
-        mBoxVertexBuffer = GD3D12Device->CreateVertexBuffer(mesh.VerticesData(), mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>), sizeof(Vertex<SkyBoxMeshFormat>));
+        mBoxIndexBuffer = GD3D12Device->CreateIndexBuffer(mesh.Indicies().GetData(), mesh.IndiciesCount() * sizeof(IndexType));
+        mBoxVertexBuffer = GD3D12Device->CreateVertexBuffer(mesh.Vertices().GetData(), mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>), sizeof(Vertex<SkyBoxMeshFormat>));
     }
 
     void SkyboxPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
@@ -146,10 +148,9 @@ namespace MRenderer
     void GBufferPass::DrawModel(D3D12CommandList* cmd, SceneModel* obj)
     {
         MeshResource* mesh = obj->GetModel()->GetMeshResource();
-        const MeshData& mesh_data = mesh->GetMeshData();
         
         // issue draw call
-        for (uint32 i = 0; i < mesh_data.GetSubMeshCount(); i++)
+        for (uint32 i = 0; i < mesh->GetSubMeshes().size(); i++)
         {
             mCullingStatus.NumDrawCall++;
 
@@ -168,11 +169,11 @@ namespace MRenderer
             cmd->SetGrphicsConstant(EConstantBufferType_Instance, obj->GetConstantBuffer()->GetCurrendConstantBufferView());
 
             // setup PSO
-            cmd->SetGraphicsPipelineState(mesh_data.GetFormat(), &mPipelineStateDesc, GetPassStateDesc(), shading_state->GetShader());
+            cmd->SetGraphicsPipelineState(mesh->GetVertexFormat(), &mPipelineStateDesc, GetPassStateDesc(), shading_state->GetShader());
             
             // issue drawcall
-            const SubMeshData& sub_mesh = mesh_data.GetSubMesh(i);
-            cmd->DrawMesh(shading_state, mesh_data.GetFormat(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), sub_mesh.Index, sub_mesh.IndicesCount);
+            const SubMeshData& sub_mesh = mesh->GetSubMeshes()[i];
+            cmd->DrawMesh(shading_state, mesh->GetVertexFormat(), mesh->GetVertexBuffer(), mesh->GetIndexBuffer(), sub_mesh.Index, sub_mesh.IndicesCount);
         }
     }
 
@@ -258,9 +259,9 @@ namespace MRenderer
         cmd->Dispatch(&mClusterCulling, ClusterSizeX, ClusterSizeY, ClusterSizeZ);
     }
     
-    void ToneMappingPass::Connect(SkyboxPass* skybox_pass)
+    void ToneMappingPass::Connect(BloomPass* bloom_pass)
     {
-        mLuminanceTexture = SampleTexture(skybox_pass, DeferredShadingPass::Output_DeferredShadingRT);
+        mLuminanceTexture = SampleTexture(bloom_pass, BloomPass::Output_LuminanceTeture);
         WriteRenderTarget(ToneMappingPass::Output_ToneMappingRT, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), ETextureFormat_R8G8B8A8_UNORM));
 
         mLuminanceHistogramCompute.SetShader("hdr_luminance_histogram.hlsl", true);
@@ -343,5 +344,226 @@ namespace MRenderer
         ASSERT(rt);
 
         cmd->Present(rt);
+    }
+
+    BloomPass::BloomPass()
+        :mInputTexture(nullptr)
+    {
+        mPrefilter.SetShader(PrefilterShader::ShaderFile, true);
+        mUpsampleBlurH.SetShader(BlurHorizontal::ShaderFile, true);
+        mUpsampleBlurV.SetShader(BlurVerticalShader::ShaderFile, true);
+        mUpsampleMerge.SetShader(MergeShader::ShaderFile, true);
+
+        for (auto& shading_state : mDownsampleH)
+        {
+            shading_state.SetShader(BlurHorizontal::ShaderFile, true);
+        }
+
+        for (auto& shading_state : mDownsampleV)
+        {
+            shading_state.SetShader(BlurVerticalShader::ShaderFile, true);
+        }
+
+        for (auto& shading_state : mUpsampleH)
+        {
+            shading_state.SetShader(UpsampleAddShader::ShaderFile, true);
+        }
+
+        for (auto& shading_state : mUpsampleV)
+        {
+            shading_state.SetShader(BlurVerticalShader::ShaderFile, true);
+        }
+    }
+
+    // ref: https://zhuanlan.zhihu.com/p/525500877
+    //      https://catlikecoding.com/unity/tutorials/custom-srp/hdr/
+    //      introductionto3dgameprogrammingwithdirectx12 section 13.7
+    // whole process is like:
+    // downsample part
+    // A[1] = Prefilter(S)
+    // B[2] = DownsampleH(A[1])
+    // A[2] = DownsampleV(B[2])
+    // B[3] = DownsampleH(A[2])
+    // A[3] = DownsampleV(B[3])
+
+    // upsample part
+    // B[2] = UpsampleH(A[2]) + UpsampleH(A[3])
+    // A[2] = UpsampleV(B[2])
+    // B[1] = UpsampleH(A[1]) + UpsampleH(A[2])
+    // A[1] = UpsampleV(B[1])
+
+    // merge part
+    // B[0] = UpsampleH(A[1])
+    // A[0] = UpsampleV(B[0]) + S
+
+    // A and B are intermediate textures, S is the original texture. they all are the same size except A and B have mipmap
+    // Prefilter is for extract highlight area and fighting fireflies. DownsampleX and UpsampleX are guassian filters that are split into horizontal and vertical parts.
+    // 1 step meas a horizontal and a vertical process, example above has 2 steps, and the mipmap level equal steps + 2 which is 4.
+    void BloomPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    {
+        PIXScope(cmd, "Bloom Pass");
+
+        DeviceTexture2D* original_tex = dynamic_cast<DeviceTexture2D*>(mInputTexture->GetResource());
+        ASSERT(original_tex);
+
+        // bloom prefilter
+        {
+            PIXScope(cmd, "Bloom Prefilter");
+
+            mPrefilter.SetConstantBuffer
+            (
+                PrefilterShader::ConstantBuffer
+                {
+                    .TexelSize = Vector2(1.0f / (original_tex->Width() >> 1), 1.0f / (original_tex->Height() >> 1)),
+                    .Threshold = 1.0f,
+                    .Knee = 0.5f,
+                }
+            );
+
+            mPrefilter.SetTexture(PrefilterShader::InputTexture, original_tex);
+            mPrefilter.SetRWTexture(PrefilterShader::OutputTexture, mMipchain.get(), 1);
+            cmd->Dispatch(&mPrefilter, CalculateDispatchSize(mMipchain->Width(), PrefilterShader::ThreadGroupSizeX), CalculateDispatchSize(mMipchain->Height(), PrefilterShader::ThreadGroupSizeY), 1);
+        }
+
+        {
+            PIXScope(cmd, "Bloom Downsample");
+            // bloom downsample
+            for (int i = 0; i < BloomStep; i++)
+            {
+                uint32 upper_mip_level = i + 1;
+                int32 lower_mip_width = mTempTexture->Width() >> (upper_mip_level + 1);
+                int32 lower_mip_height = mTempTexture->Height() >> (upper_mip_level + 1);
+
+                {
+                    PIXScope(cmd, "Blur Horizontal");
+
+                    // use gaussian filter for downsampling
+                    mDownsampleH[i].SetConstantBuffer
+                    (
+                        BlurHorizontal::ConstantBuffer
+                        {
+                            .TexelSize = Vector2(1.0f / lower_mip_width, 1.0f / lower_mip_height),
+                        }
+                    );
+
+                    // horizontal blur
+                    mDownsampleH[i].SetTexture(BlurHorizontal::InputTexture, mMipchain.get(), upper_mip_level);
+                    mDownsampleH[i].SetRWTexture(BlurHorizontal::OutputTexture, mTempTexture.get(), upper_mip_level + 1);
+                    cmd->Dispatch(&mDownsampleH[i], CalculateDispatchSize(lower_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
+                }
+
+                {
+                    PIXScope(cmd, "Blur Vertical");
+                    mDownsampleV[i].SetConstantBuffer(BlurVerticalShader::ConstantBuffer
+                        {
+                            .TexelSize = Vector2(1.0f / lower_mip_width, 1.0f / lower_mip_height),
+                        }
+                    );
+
+                    // vertical blur
+                    mDownsampleV[i].SetTexture(BlurVerticalShader::InputTexture, mTempTexture.get(), i + 2);
+                    mDownsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, mMipchain.get(), i + 2);
+                    cmd->Dispatch(&mDownsampleV[i], CalculateDispatchSize(lower_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
+                }
+            }
+        }
+
+        {
+            PIXScope(cmd, "Bloom Upsample");
+
+            // guassain filter upper level and lower level and add them together
+            // let 2d gaussain filter to be S, and 1d horizontal and vertical gaussian filter to be H and V
+            // upslample process is like S(t1) + S(t2) = V(H(t1)) + V(H(t2)) = V(H(t1) + H(t2))
+            for (int i = BloomStep - 1; i >= 0; i--)
+            {
+                int32 upper_mip_level = i + 1;
+                int32 upper_mip_width = mTempTexture->Width() >> upper_mip_level;
+                int32 upper_mip_height = mTempTexture->Height() >> upper_mip_level;
+
+                {
+                    PIXScope(cmd, "Upsample Horizontal Add");
+
+                    // H(t1) + H(t2)
+                    mUpsampleH[i].SetConstantBuffer
+                    (
+                        UpsampleAddShader::ConstantBuffer
+                        {
+                            .TexelSize = Vector2(1.0f / upper_mip_width, 1.0f / upper_mip_height),
+                        }
+                    );
+
+                    mUpsampleH[i].SetTexture(UpsampleAddShader::UpperLevel, mMipchain.get(), upper_mip_level);
+                    mUpsampleH[i].SetTexture(UpsampleAddShader::LowerLevel, mMipchain.get(), upper_mip_level + 1);
+                    mUpsampleH[i].SetRWTexture(UpsampleAddShader::OutputTexture, mTempTexture.get(), i + 1);
+                    cmd->Dispatch(&mUpsampleH[i], CalculateDispatchSize(upper_mip_width, UpsampleAddShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, UpsampleAddShader::ThreadGroupSizeY), 1);
+                }
+
+                {
+                    PIXScope(cmd, "Blur Vertical");
+                    mUpsampleV[i].SetConstantBuffer
+                    (
+                        BlurVerticalShader::ConstantBuffer
+                        {
+                            .TexelSize = Vector2(1.0f / upper_mip_width, 1.0f / upper_mip_height),
+                        }
+                    );
+
+                    // V(t)
+                    mUpsampleV[i].SetTexture(BlurVerticalShader::InputTexture, mTempTexture.get(), upper_mip_level);
+                    mUpsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, mMipchain.get(), upper_mip_level);
+                    cmd->Dispatch(&mUpsampleV[i], CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
+                }
+            }
+        }
+
+        {
+            PIXScope(cmd, "Upsample Merge");
+            // merge the blurred texture with the original texture
+            // simply gaussain filter upsample and add the original texture
+
+            uint32 upper_mip_width = mMipchain->Width();
+            uint32 upper_mip_height = mMipchain->Height();
+
+            {
+                PIXScope(cmd, "Blur Horizontal");
+
+                mUpsampleBlurH.SetConstantBuffer
+                (
+                    BlurHorizontal::ConstantBuffer
+                    {
+                        .TexelSize = Vector2(1.0f / upper_mip_width, 1.0f / upper_mip_height),
+                    }
+                );
+
+                mUpsampleBlurH.SetTexture(BlurHorizontal::InputTexture, mMipchain.get(), 1);
+                mUpsampleBlurH.SetRWTexture(BlurHorizontal::OutputTexture, mTempTexture.get(), 0);
+                cmd->Dispatch(&mUpsampleBlurH, CalculateDispatchSize(upper_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
+            }
+
+            {
+                PIXScope(cmd, "Blur Vertical");
+                mUpsampleBlurV.SetConstantBuffer
+                (
+                    BlurVerticalShader::ConstantBuffer
+                    {
+                        .TexelSize = Vector2(1.0f / upper_mip_width, 1.0f / upper_mip_height),
+                    }
+                );
+
+                // vertical blur
+                mUpsampleBlurV.SetTexture(BlurVerticalShader::InputTexture, mTempTexture.get(), 0);
+                mUpsampleBlurV.SetRWTexture(BlurVerticalShader::OutputTexture, mMipchain.get(), 0);
+                cmd->Dispatch(&mUpsampleBlurV, CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
+            }
+
+            {
+                PIXScope(cmd, "Merge");
+
+                // merge with original texture
+                mUpsampleMerge.SetTexture(MergeShader::InputTexture , original_tex, 0);
+                mUpsampleMerge.SetRWTexture(MergeShader::OutputTexture, mMipchain.get(), 0);
+                cmd->Dispatch(&mUpsampleMerge, CalculateDispatchSize(original_tex->Width(), MergeShader::ThreadGroupSizeX), CalculateDispatchSize(original_tex->Height(), MergeShader::ThreadGroupSizeY), 1);
+            }
+        }
     }
 }

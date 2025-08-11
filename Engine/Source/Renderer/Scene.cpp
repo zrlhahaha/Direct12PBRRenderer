@@ -68,7 +68,8 @@ namespace MRenderer{
         uint32 num = 0;
         for (const auto& model : mSceneModel)
         {
-            num += model->GetModel()->GetMeshResource()->mMeshData.GetSubMeshCount();
+            size_t mesh_num = model->GetModel()->GetMeshResource()->GetSubMeshes().size();
+            num += static_cast<uint32>(mesh_num);
         }
         return num;
     }

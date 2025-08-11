@@ -96,13 +96,34 @@ namespace MRenderer
 
     std::string ToString(const std::wstring_view& str);
     std::wstring ToWString(const std::string_view& str);
-    
+
+    // return the next mutiples of @alignment that larger than the @size
     constexpr inline uint32 AlignUp(uint32 size, uint32 alignment)
     {
         return (size + alignment - 1) & ~(alignment - 1);
     }
 
     void PrintBytes(const void* data, uint32 size=64);
+    int64 Time();
+
+    class TimeScope 
+    {
+    public:
+        TimeScope(std::string_view name) 
+            :mName(name), mTimeStamp(0)
+        {
+            mTimeStamp = Time();
+        }
+
+        ~TimeScope() 
+        {
+            Log(mName, Time() - mTimeStamp);
+        }
+
+    private:
+        std::string mName;
+        int64 mTimeStamp;
+    };
 
     template<typename... Args>
     class Event 

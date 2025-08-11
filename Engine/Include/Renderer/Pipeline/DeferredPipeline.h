@@ -64,7 +64,7 @@ namespace MRenderer
         PrecomputeBRDFPass()
             : mReady(false)
         {
-            mPrecomputeBRDF = GD3D12Device->CreateTexture2D(512, 512, 1, ETextureFormat_R16G16_FLOAT, true);
+            mPrecomputeBRDF = GD3D12Device->CreateTexture2D(512, 512, 1, ETextureFormat_R16G16_FLOAT, ETexture2DFlag_AllowUnorderedAccess);
 
             mShadingState.SetShader("precompute_brdf.hlsl", true);
             mShadingState.SetRWTexture("PrecomputeBRDF", mPrecomputeBRDF.get());
@@ -143,6 +143,7 @@ namespace MRenderer
         };
 
         static constexpr std::string_view Output_DeferredShadingRT = "DeferredShadingRT";
+        static constexpr ETextureFormat DeferredShadingRTFormat = ETextureFormat_R16G16B16A16_FLOAT;
 
     public:
         DeferredShadingPass() 
@@ -167,7 +168,7 @@ namespace MRenderer
             mPrefilterEnvMap = SampleTexture(env_map_pass, PreFilterEnvMapPass::Output_PrefilterEnvMap);
             mPrecomputeBRDF = SampleTexture(precompute_brdf_pass, PrecomputeBRDFPass::Output_PrecomputeBRDF);
 
-            WriteRenderTarget(Output_DeferredShadingRT, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), ETextureFormat_R16G16B16A16_FLOAT));
+            WriteRenderTarget(Output_DeferredShadingRT, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), DeferredShadingRTFormat));
             WriteDepthStencil(gbuffer_pass->GetDepthStencil()); // not actually writting to it, just for enable stencil test
         }
 
@@ -211,6 +212,125 @@ namespace MRenderer
         std::shared_ptr<DeviceVertexBuffer> mBoxVertexBuffer;
         
         ShadingState mShadingState;
+    };
+
+    class BloomPass : public IRenderPass
+    {
+    public:
+        static constexpr std::string_view Input_LuminanceTexture = SkyboxPass::Output_LuminanceTexture;
+        static constexpr std::string_view Output_LuminanceTeture = "BloomPassRT";
+
+        static constexpr uint32 BloomStep = 3;
+        static constexpr uint32 MipmapLevel = BloomStep + 2; // see BloomPass::Execute comment
+        
+        struct PrefilterShader 
+        {
+            struct ConstantBuffer
+            {
+                Vector2 TexelSize;
+                float Threshold;
+                float Knee;
+            };
+
+            static constexpr std::string_view ShaderFile = "bloom_prefilter.hlsl";
+            static constexpr std::string_view InputTexture = "InputTexture";
+            static constexpr std::string_view OutputTexture = "OutputTexture";
+            static constexpr uint32 ThreadGroupSizeX = 16;
+            static constexpr uint32 ThreadGroupSizeY = 16;
+        };
+
+        struct BlurShader 
+        {
+            struct ConstantBuffer
+            {
+                Vector2 TexelSize;
+            };
+
+            static constexpr std::string_view InputTexture = "InputTexture";
+            static constexpr std::string_view OutputTexture = "OutputTexture";
+        };
+
+        struct BlurHorizontal : public BlurShader
+        {
+            static constexpr std::string_view ShaderFile = "blur_horizontal.hlsl";
+            static constexpr uint32 ThreadGroupSizeX = 256;
+            static constexpr uint32 ThreadGroupSizeY = 1;
+            static constexpr uint32 ThreadGroupSizeZ = 1;
+        };
+
+        struct BlurVerticalShader : public BlurShader
+        {
+            static constexpr std::string_view ShaderFile = "blur_vertical.hlsl";
+            static constexpr uint32 ThreadGroupSizeX = 1;
+            static constexpr uint32 ThreadGroupSizeY = 256;
+            static constexpr uint32 ThreadGroupSizeZ = 1;
+        };
+
+        struct UpsampleAddShader 
+        {
+            struct ConstantBuffer
+            {
+                Vector2 TexelSize;
+            };
+
+            static constexpr std::string_view ShaderFile = "bloom_upsample_add.hlsl";
+            static constexpr uint32 ThreadGroupSizeX = 256;
+            static constexpr uint32 ThreadGroupSizeY = 1;
+            static constexpr uint32 ThreadGroupSizeZ = 1;
+
+            static constexpr std::string_view UpperLevel = "UpperLevel";
+            static constexpr std::string_view LowerLevel = "LowerLevel";
+            static constexpr std::string_view OutputTexture = "OutputTexture";
+        };
+
+        struct MergeShader 
+        {
+            static constexpr std::string_view ShaderFile = "bloom_merge.hlsl";
+            static constexpr uint32 ThreadGroupSizeX = 16;
+            static constexpr uint32 ThreadGroupSizeY = 16;
+            static constexpr uint32 ThreadGroupSizeZ = 1;
+
+            static constexpr std::string_view InputTexture = "InputTexture";
+            static constexpr std::string_view OutputTexture = "OutputTexture";
+        };
+
+    public:
+        BloomPass();
+
+        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
+        void Connect(SkyboxPass* skybox_pass)
+        {
+            mInputTexture = SampleTexture(skybox_pass, Input_LuminanceTexture);
+
+            if (!mTempTexture && !mMipchain)
+            {
+                uint32 width = mInputTexture->GetTextureFormatKey().Info.Width;
+                uint32 height = mInputTexture->GetTextureFormatKey().Info.Height;
+                ETextureFormat format = mInputTexture->GetTextureFormatKey().Info.Format;
+
+                ASSERT(BloomStep < CalculateMaxMipLevels(width, height));
+
+                mTempTexture = GD3D12Device->CreateTexture2D(int(width), int(height), MipmapLevel, format, ETexture2DFlag_AllowUnorderedAccess);
+                mMipchain = GD3D12Device->CreateTexture2D(int(width), int(height), MipmapLevel, format, ETexture2DFlag_AllowUnorderedAccess);
+            }
+
+            WritePersistent(Output_LuminanceTeture, mMipchain.get());
+        }
+
+
+    protected:
+        RenderPassNode* mInputTexture;
+        std::shared_ptr<DeviceTexture2D> mOutput; // the final texture
+        std::shared_ptr<DeviceTexture2D> mTempTexture; // intermidate texture for horizontal and vertical guassian blur
+        std::shared_ptr<DeviceTexture2D> mMipchain; // downsample mipchain
+        ShadingState mDownsampleH[BloomStep];
+        ShadingState mDownsampleV[BloomStep];
+        ShadingState mUpsampleH[BloomStep];
+        ShadingState mUpsampleV[BloomStep];
+        ShadingState mUpsampleBlurH;
+        ShadingState mUpsampleBlurV;
+        ShadingState mUpsampleMerge;
+        ShadingState mPrefilter;
     };
 
     class ClusteredPass : public IRenderPass
@@ -319,7 +439,7 @@ namespace MRenderer
             mAverageLuminance->Resource()->SetName(L"AverageLuminance");
         }
 
-        void Connect(SkyboxPass* skybox_pass);
+        void Connect(BloomPass* bloom_pass);
         void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
 
     protected:
@@ -344,7 +464,7 @@ namespace MRenderer
         {
         }
 
-        virtual void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera);
+        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
 
         void Connect(RenderPassNode* node)
         {
@@ -367,6 +487,7 @@ namespace MRenderer
         std::unique_ptr<GBufferPass> mGBufferPass;
         std::unique_ptr<DeferredShadingPass> mDeferredShadingPass;
         std::unique_ptr<SkyboxPass> mSkyboxPass;
+        std::unique_ptr<BloomPass> mBloomPass;
         std::unique_ptr<PreFilterEnvMapPass> mPrefilterEnvMapPass;
         std::unique_ptr<PrecomputeBRDFPass> mPrecomputeBRDFPass;
         std::unique_ptr<ToneMappingPass> mToneMappingPass;

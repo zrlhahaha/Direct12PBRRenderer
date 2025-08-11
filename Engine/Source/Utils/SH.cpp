@@ -114,7 +114,7 @@ namespace MRenderer
                 Vector3 dir = FromSphericalCoordinate(theta, phi);
 
                 // assume cube map is HDRI format, so we don't need gamma correction here
-                Vector4 color = TextureData::SampleTextureCube(cube_map, theta, phi);
+                Vector4 color = CubeMapTextureData::Sample(cube_map, theta, phi);
 
                 for (uint32 co_index = 0; co_index < SH2Coefficients::CoefficientsCount; co_index++)
                 {

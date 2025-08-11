@@ -3,6 +3,7 @@
 #undef _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 
 #include <locale>
+#include <chrono>
 
 #include "Utils/Misc.h"
 
@@ -225,7 +226,7 @@ namespace MRenderer
             }
         }
 
-        uint8* new_buffer = new uint8[size];
+        uint8* new_buffer = reinterpret_cast<uint8*>(malloc(size));
         if (mBuffer) 
         {
             memcpy(new_buffer, mBuffer, mCapacity);
@@ -257,6 +258,23 @@ namespace MRenderer
             std::cout<<(static_cast<uint32>(p[i])) << " ";
         }
         std::cout << std::endl;
+    }
+
+    int64 Time()
+    {
+        static thread_local std::chrono::steady_clock::time_point time_stamp;
+
+        if (time_stamp == std::chrono::steady_clock::time_point())
+        {
+            time_stamp = std::chrono::high_resolution_clock::now();
+            return 0;
+        }
+        else 
+        {
+            auto now = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - time_stamp);
+            return duration.count();
+        }
     }
 
     std::optional<std::ifstream> ReadFile(std::string_view path, bool binary/*=false*/)

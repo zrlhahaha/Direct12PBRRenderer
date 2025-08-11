@@ -6,14 +6,14 @@ ImportModel -f F:/dev/OriginalAsset/terrain_quad/terrain_quad.mtl.obj -o Asset/M
 CreateSphereModel -o Asset/Model/Sphere
 ImportCubeMap -f F:/dev/OriginalAsset/HDRSkyBox/Wild -o Asset/Skybox/HDRWild
 
-ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_albedo.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_albedo
-ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_ao.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_ao -m 61
-ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_metallic.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_metallic -m 61
-ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_normal-dx.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_normal-dx
-ImportTexture -f F:/dev/OriginalAsset/rusted_steel/rusted-steel_roughness.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/rusted_steel_roughness -m 61
-ImportTexture -f F:/dev/OriginalAsset/rusted_steel/test.jpg -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/RustSteel/test.jpg -m 61
-ImportModel -f F:/dev/OriginalAsset/terrain_quad/rocky_terrain_02_2k.obj -o Asset/Model/TerrainQuad
-ImportModel -f F:/dev/OriginalAsset/Revolver/revolver.obj -o Asset/Model/Revolver -y 1
-ImportModel -f F:/dev/OriginalAsset/Revolver/revolver.obj -o Asset/Model/Revolver
+ImportTexture -f F:/dev/OriginalAsset/Tile/tile_albedo.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Sphere/Tile/tile_albedo
+ImportTexture -f F:/dev/OriginalAsset/Tile/tile_ao.png -o F:/dev/Direct12PBRRenderer/DeferredRendering/Asset/Model/Tile/tile_ao -m 61
 
-discordapp.com/users/shayulajiao8789
+ImportModel -f F:/dev/OriginalAsset/Revolver/revolver.obj -o Asset/Model/Revolver -y 1
+ImportModel -f F:/dev/OriginalAsset/Revolver/revolver.obj -o Asset/Model/Revolver -y 1
+ImportModel -f F:/dev/OriginalAsset/Suitcase/suitcase.obj -o Asset/Model/Suitcase -y 1
+ImportModel -f F:/dev/OriginalAsset/rock/rock.obj -o Asset/Model/Rock -y 1
+ImportModel -f F:/dev/OriginalAsset/barrel/Barrel.obj -o Asset/Model/Barrel -y 1
+ImportModel -f F:/dev/OriginalAsset/Tile/Tile.obj -o Asset/Model/Tile -y 1
+
+file_path = L"Asset/Model/Sphere/sphere_Mesh_data.json

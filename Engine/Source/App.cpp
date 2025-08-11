@@ -3,6 +3,18 @@
 #include "Resource/DefaultResource.h"
 #include "Resource/ResourceLoader.h"
 
+//
+//void* operator new(size_t size) {
+//    std::cout << "Global new: allocating " << size << " bytes\n";
+//    return malloc(size);
+//}
+//
+//void operator delete(void* ptr) noexcept {
+//    size_t size = _msize(ptr);
+//    std::cout << "Global delete" << _msize(ptr) << " bytes\n";
+//    free(ptr);
+//}
+
 
 namespace MRenderer
 {
@@ -82,7 +94,7 @@ namespace MRenderer
         mDevice = std::make_unique<D3D12Device>(mClientWidth, mClientHeight);
         mDevice->BeginFrame();
 
-        // mScene = ResourceLoader::Instance().LoadResource<Scene>("Asset/Scene/main.json");
+        mScene = ResourceLoader::Instance().LoadResource<Scene>("Asset/Scene/main.json");
 
         mCamera = std::make_unique<Camera>(0.4F * PI, mClientWidth, mClientHeight, 0.1F, 1000.0F);
         mCamera->Move(Vector3(0, 0, -5));

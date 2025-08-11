@@ -170,14 +170,12 @@ namespace MRenderer
         inline RenderTargetView& GetNullRTV() { return mNullRTV; }
 
         std::shared_ptr<DeviceVertexBuffer> CreateVertexBuffer(const void* data, uint32 count, uint32 stride);
-        std::shared_ptr<DeviceIndexBuffer> CreateIndexBuffer(const uint32* data, uint32 data_size);
+        std::shared_ptr<DeviceIndexBuffer> CreateIndexBuffer(const void* data, uint32 data_size);
         std::shared_ptr<DeviceStructuredBuffer> CreateStructuredBuffer(uint32 data_size, uint32 stride, const void* initial_data=nullptr);
-        std::shared_ptr<DeviceTexture2D> CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access=false, uint32 mip_chain_mem_size=0, const void* mip_chain=nullptr);
+        std::shared_ptr<DeviceTexture2D> CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, ETexture2DFlag flag, uint32 mip_chain_mem_size=0, const void* mip_chain=nullptr);
         std::shared_ptr<DeviceTexture2DArray> CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access=false, uint32 mip_chain_mem_size=0, const std::array<const void*, NumCubeMapFaces>* mip_chains=nullptr);
         std::shared_ptr<DeviceConstantBuffer> CreateConstBuffer(uint32 size);
         std::shared_ptr<DeviceSampler> CreateSampler(ESamplerFilter filter_mode, ESamplerAddressMode address_mode);
-        std::shared_ptr<DeviceRenderTarget> CreateRenderTarget(uint32 width, uint32 height, ETextureFormat format = ETextureFormat_R8G8B8A8_UNORM, D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_RENDER_TARGET);
-        std::shared_ptr<DeviceDepthStencil> CreateDepthStencil(uint32 width, uint32 height, D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_DEPTH_WRITE);
         std::shared_ptr<PipelineStateObject> CreateGraphicsPipelineStateObject(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program);
         std::shared_ptr<PipelineStateObject> CreateComputePipelineStateObject(const D3D12ShaderProgram* program);
         

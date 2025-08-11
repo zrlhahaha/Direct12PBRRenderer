@@ -1,8 +1,0 @@
-{
-    "@IResource": null,
-    "mMaterialPath": [
-        "Asset/Model/CigarBox\\CigarBox_Mat_0",
-        "Asset/Model/CigarBox\\CigarBox_Mat_1"
-    ],
-    "mMeshPath": "Asset/Model/CigarBox\\CigarBox_Mesh"
-}

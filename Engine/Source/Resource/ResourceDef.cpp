@@ -12,31 +12,29 @@ namespace MRenderer
 {
     void MeshResource::AllocateGPUResource()
     {
-        // assume there won't be any reallocation for now
-        ASSERT(!mDeviceVertexBuffer);
-        ASSERT(!mDeviceIndexBuffer);
+        MeshData mesh_data;
+        ResourceLoader::Instance().LoadBinary(mesh_data, mMeshPath);
 
-        VertexDefination vertex = GetVertexLayout(mMeshData.mVertexFormat);
+        mBound = mesh_data.Bound();
+        mVertexFormat = mesh_data.Format();
+        mSubMeshes = mesh_data.GetSubMeshs();
 
+        VertexDefination layout = GetVertexLayout(mesh_data.Format());
         mDeviceVertexBuffer = GD3D12Device->CreateVertexBuffer(
-            mMeshData.mVertices.GetData(),
-            mMeshData.mVertices.GetSize(),
-            vertex.VertexSize
+            mesh_data.Vertices().GetData(),
+            mesh_data.Vertices().GetSize(),
+            layout.VertexSize
         );
 
         mDeviceIndexBuffer = GD3D12Device->CreateIndexBuffer(
-            reinterpret_cast<uint32*>(mMeshData.mIndicies.GetData()),
-            mMeshData.mIndicies.GetSize()
+            mesh_data.Indicies().GetData(),
+            mesh_data.Indicies().GetSize()
         );
-
-        // release data
-        mMeshData.mVertices = BinaryData();
-        mMeshData.mIndicies = BinaryData();
     }
 
 
-    MeshResource::MeshResource(std::string_view repo_path, MeshData mesh_data)
-        :IResource(), mMeshData(std::move(mesh_data))
+    MeshResource::MeshResource(std::string_view repo_path, std::string_view mesh_path)
+        :IResource(), mMeshPath(mesh_path)
     {
         SetRepoPath(repo_path);
         AllocateGPUResource();
@@ -54,20 +52,18 @@ namespace MRenderer
 
     void TextureResource::AllocateGPUResource()
     {
-        ASSERT(!mTextureData.Empty());
+        TextureData tex;
+        ASSERT(ResourceLoader::Instance().LoadBinary(tex, mTexturePath));
 
         mDeviceTexture = GD3D12Device->CreateTexture2D(
-            mTextureData.Width(),
-            mTextureData.Height(),
-            mTextureData.MipLevels(),
-            mTextureData.Format(),
-            false,
-            mTextureData.DataSize(),
-            mTextureData.Data()
+            tex.Width(),
+            tex.Height(),
+            tex.MipLevels(),
+            tex.Format(),
+            ETexture2DFlag_None,
+            tex.DataSize(),
+            tex.Data()
         );
-
-        // release the texture memory
-        mTextureData.mData = BinaryData();
     }
 
     std::optional<ShaderParameter> MaterialResource::GetShaderParameter(const std::string& name)
@@ -188,38 +184,37 @@ namespace MRenderer
         mMeshResource = res;
     }
 
-    void CubeMapResource::GenerateSHCoefficients()
-    {
-        SH2Coefficients shr;
-        SH2Coefficients shg;
-        SH2Coefficients shb;
-
-        SHBaker::ProjectEnvironmentMap(mTextureData, shr, shg, shb);
-        mSHCoefficients = SHBaker::PackCubeMapSHCoefficient(shr, shg, shb);
-    }
-
     void CubeMapResource::PostDeserialized()
     {
-        AllocateGPUResource();
+        CubeMapTextureData texture = ReadTextureFile();
+        AllocateGPUResource(texture);
     }
 
-    void CubeMapResource::AllocateGPUResource()
+    void CubeMapResource::AllocateGPUResource(const CubeMapTextureData& texture)
     {
-        const TextureData& face0 = mTextureData[0]; // texture format of 6 faces are the same.
+        const TextureData& face0 = texture.Data()[0]; // texture format of 6 faces are the same.
+
+        ASSERT(
+            texture.Data()[0].mInfo == texture.Data()[1].mInfo && texture.Data()[1].mInfo == texture.Data()[2].mInfo &&
+            texture.Data()[2].mInfo == texture.Data()[3].mInfo && texture.Data()[3].mInfo == texture.Data()[4].mInfo &&
+            texture.Data()[4].mInfo == texture.Data()[5].mInfo
+        );
 
         std::array<const void*, NumCubeMapFaces> pixels{};
         for (uint32 i = 0; i < NumCubeMapFaces; i++) 
         {
-            ASSERT(!mTextureData[i].Empty());
-            pixels[i] = mTextureData[i].Data();
+            pixels[i] = texture.Data()[i].Data();
         }
 
         mDeviceTexture2DArray = GD3D12Device->CreateTextureCube(face0.Width(), face0.Height(), face0.MipLevels(), face0.Format(), false, face0.DataSize(), &pixels);
         mDeviceTexture2DArray->Resource()->SetName(L"CubeMap");
+        mSHCoefficients = texture.mSHCoefficients;
+    }
 
-        for (uint32 i = 0; i < NumCubeMapFaces; i++)
-        {
-            mTextureData[i].mData = BinaryData();
-        }
+    CubeMapTextureData CubeMapResource::ReadTextureFile()
+    {
+        CubeMapTextureData texture;
+        ResourceLoader::Instance().LoadBinary(texture, mTexturePath);
+        return texture;
     }
 }

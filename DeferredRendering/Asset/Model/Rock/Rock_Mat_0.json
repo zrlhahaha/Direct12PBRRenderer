@@ -1,0 +1,18 @@
+{
+    "@IResource": {},
+    "mParameterTable": {
+        "UseAlbedoMap": true,
+        "UseAmbientOcclusionMap": true,
+        "UseMetallicMap": true,
+        "UseNormalMap": true,
+        "UseRoughnessMap": true
+    },
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "AlbedoMap": "Asset/Model/Rock\\Rock_rock_low_Base_Color.png",
+        "AmbientOcclusionMap": "Asset/Model/Rock\\Rock_rock_low_Mixed_AO.png",
+        "MetallicMap": "Asset/Model/Rock\\Rock_rock_low_Metallic.png",
+        "NormalMap": "Asset/Model/Rock\\Rock_rock_low_Normal_DirectX.png",
+        "RoughnessMap": "Asset/Model/Rock\\Rock_rock_low_Roughness.png"
+    }
+}

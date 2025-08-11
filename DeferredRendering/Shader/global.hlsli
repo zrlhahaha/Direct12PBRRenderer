@@ -153,4 +153,9 @@ float3 unpack_normal(float2 normal)
 {
     return normalize(decode_octahedron(normal));
 }
+
+float luminance(float3 color)
+{
+    return dot(color, float3(0.2126, 0.7152, 0.0722));
+}
 #endif

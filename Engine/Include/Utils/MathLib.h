@@ -49,6 +49,17 @@ namespace MRenderer
         return a > b ? a : b;
     }
 
+    constexpr uint32 Log2(uint32 val) 
+    {
+        int i = 0;
+        while (val >>= 1) 
+        {
+            i++;
+        }
+
+        return i;
+    }
+
     // require SSE 4.1
     // see also: https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#ssetechs=SSE,SSE2,SSE3
     template<uint32 N> struct Vector;
@@ -346,7 +357,6 @@ namespace MRenderer
             :x(x), y(y)
         {
         }
-
 
     public:
         float x, y;

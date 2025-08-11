@@ -38,7 +38,6 @@ float3 ACES_tone_mapping(float3 x)
 float4 ps_main(PSInput input) : SV_TARGET
 {
     float3 luminance = LuminanceTexture.Sample(SamplerPointClamp, input.uv).rgb;
-    float gray_value = dot(luminance, float3(0.2126, 0.7152, 0.0722));
     float l_avg = AverageLuminance[0];
 
     // auto exposure, after this process, most part of the image will be in the range of [0, 1], except for those luminance values are above the @l_max

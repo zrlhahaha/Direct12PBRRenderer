@@ -133,8 +133,9 @@ namespace MRenderer
         std::array<RenderTargetView*, MaxRenderTargets> rtv_array = {};
         for (uint32 i = 0; i < pass->GetRenderTargetsSize(); i++)
         {
-            DeviceRenderTarget* rt = dynamic_cast<DeviceRenderTarget*>(rt_nodes[i]->GetResource());
+            DeviceTexture2D* rt = dynamic_cast<DeviceTexture2D*>(rt_nodes[i]->GetResource());
             ASSERT(rt);
+
             RenderTargetView* rtv = rtv_array[i] = rt->GetRenderTargetView();
 
             // if it's the begining of a transient RT, clean it up first
@@ -149,7 +150,7 @@ namespace MRenderer
         DepthStencilView* dsv = nullptr;
         if (depth_stencil_node)
         {
-            DeviceDepthStencil* depth_stencil = dynamic_cast<DeviceDepthStencil*>(depth_stencil_node->GetResource());
+            DeviceTexture2D* depth_stencil = dynamic_cast<DeviceTexture2D*>(depth_stencil_node->GetResource());
             dsv = depth_stencil ? depth_stencil->GetDepthStencilView() : nullptr;
 
             // if it's the begining of a transient depth stencil, clean it up first
@@ -253,7 +254,7 @@ namespace MRenderer
 
         if (key.Info.Format != ETextureFormat_DepthStencil)
         {
-            auto render_target = GD3D12Device->CreateRenderTarget(key.Info.Width, key.Info.Height, key.Info.Format);
+            auto render_target = GD3D12Device->CreateTexture2D(key.Info.Width, key.Info.Height, 1, key.Info.Format, ETexture2DFlag_AllowRenderTarget);
             size_t index = mTransientResources[key].size();
             render_target->Resource()->SetName((std::wstring(L"TransientRenderTarget") + std::to_wstring(index)).data());
 
@@ -262,7 +263,7 @@ namespace MRenderer
         }
         else
         {
-            auto depth_stencil = GD3D12Device->CreateDepthStencil(key.Info.Width, key.Info.Height);
+            auto depth_stencil = GD3D12Device->CreateTexture2D(key.Info.Width, key.Info.Height, 1, ETextureFormat_None, ETexture2DFlag_AllowDepthStencil);
             size_t index = mTransientResources[key].size();
             depth_stencil->Resource()->SetName((std::wstring(L"TransientDepthStencil") + std::to_wstring(index)).data());
 
@@ -287,7 +288,7 @@ namespace MRenderer
         }
     }
 
-    IDeviceResource* TransientTexturePool::GetResource(TextureFormatKey key, uint32 index)
+    DeviceTexture2D* TransientTexturePool::GetResource(TextureFormatKey key, uint32 index)
     {
         return mTransientResources[key][index].Resource.get();
     }

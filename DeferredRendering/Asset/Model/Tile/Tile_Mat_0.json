@@ -1,0 +1,18 @@
+{
+    "@IResource": {},
+    "mParameterTable": {
+        "UseAlbedoMap": true,
+        "UseAmbientOcclusionMap": true,
+        "UseMetallicMap": true,
+        "UseNormalMap": true,
+        "UseRoughnessMap": true
+    },
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "AlbedoMap": "Asset/Model/Tile\\Tile_tile_albedo.png",
+        "AmbientOcclusionMap": "Asset/Model/Tile\\Tile_tile_ao.png",
+        "MetallicMap": "Asset/Model/Tile\\Tile_tile_metallic.png",
+        "NormalMap": "Asset/Model/Tile\\Tile_tile_normal_dx.png",
+        "RoughnessMap": "Asset/Model/Tile\\Tile_tile_roughness.png"
+    }
+}

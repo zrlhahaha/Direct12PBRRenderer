@@ -24,6 +24,14 @@ namespace MRenderer
         ESamplerAddressMode_MirrorOnce = 5,
     };
 
+    enum ETexture2DFlag : uint8
+    {
+        ETexture2DFlag_None = 0,
+        ETexture2DFlag_AllowRenderTarget = 1 << 0,
+        ETexture2DFlag_AllowDepthStencil = 1 << 1,
+        ETexture2DFlag_AllowUnorderedAccess = 1 << 2,
+    };
+
     // for d3d12 resource RAII management, state tracking and keeping mapped pointer
     class D3D12Resource
     {
@@ -239,11 +247,10 @@ namespace MRenderer
     public:
         DeviceTexture(const DeviceTexture& other) = delete;
 
-        inline D3D12Resource* Resource() { return &mTextureResource; }
         inline void SetShaderResourceView(ShaderResourceView view) { mShaderResourceView = std::move(view); }
-        inline void SetUnorderedAccessView(UnorderAccessView view) { mUnorderedAccessView = std::move(view); }
         inline ShaderResourceView* GetShaderResourceView() { ASSERT(!mShaderResourceView.Empty()); return &mShaderResourceView; }
-        inline UnorderAccessView* GetUnorderedResourceView() { ASSERT(!mUnorderedAccessView.Empty());  return &mUnorderedAccessView; }
+
+        inline D3D12Resource* Resource() { return &mTextureResource; }
         inline const ETextureFormat Format() const { return mTextureFormat; }
         inline uint32 Width() const { return mWidth; }
         inline uint32 Height() const { return mHeight; }
@@ -253,7 +260,6 @@ namespace MRenderer
     protected:
         D3D12Resource mTextureResource;
         ShaderResourceView mShaderResourceView;
-        UnorderAccessView mUnorderedAccessView;
         uint32 mWidth, mHeight, mDepth, mMipLevels;
         ETextureFormat mTextureFormat;
     };
@@ -262,10 +268,40 @@ namespace MRenderer
     {
     public:
         DeviceTexture2D(D3D12Resource resource) 
-            : DeviceTexture(std::move(resource))
+            : DeviceTexture(std::move(resource)), mMipSliceSRV(MipLevels())
         {
         }
         DeviceTexture2D(DeviceTexture2D&& other) = default;
+
+        inline void SetRenderTargetView(RenderTargetView view) { mRenderTargetView = std::move(view); }
+        inline RenderTargetView* GetRenderTargetView() { ASSERT(!mRenderTargetView.Empty());  return &mRenderTargetView; }
+        inline void SetUnorderedAccessView(UnorderAccessView view) { mUnorderedAccessView = std::move(view); }
+        inline UnorderAccessView* GetUnorderedResourceView() { ASSERT(!mUnorderedAccessView.Empty());  return &mUnorderedAccessView; }
+        inline DepthStencilView* GetDepthStencilView() { ASSERT(!mDepthStencilView.Empty()); return &mDepthStencilView; }
+        inline void SetDepthStencilView(DepthStencilView view) { mDepthStencilView = std::move(view); }
+
+        inline ShaderResourceView* GetMipSliceSRV(uint32 index) { ASSERT(index < MipLevels() && !mMipSliceSRV[index].Empty()); return &mMipSliceSRV[index]; };
+        inline void SetMipSliceSRV(uint32 index, ShaderResourceView srv) { ASSERT(index < MipLevels()); mMipSliceSRV[index] = std::move(srv); };
+
+        inline UnorderAccessView* GetMipSliceUAV(uint32 index) { ASSERT(index < MipLevels() && !mMipSliceUAV[index].Empty()); return &mMipSliceUAV[index]; };
+        inline void SetMipSliceUAV(uint32 index, UnorderAccessView uav) 
+        { 
+            ASSERT(index < MipLevels());
+
+            if (mMipSliceUAV.empty()) 
+            {
+                mMipSliceUAV.resize(MipLevels());
+            }
+            mMipSliceUAV[index] = std::move(uav); 
+        };
+
+
+    protected:
+        std::vector<UnorderAccessView> mMipSliceUAV; // mip slice uav
+        std::vector<ShaderResourceView> mMipSliceSRV;
+        UnorderAccessView mUnorderedAccessView;
+        RenderTargetView mRenderTargetView;
+        DepthStencilView mDepthStencilView;
     };
 
     class DeviceTexture2DArray : public DeviceTexture
@@ -275,48 +311,12 @@ namespace MRenderer
         DeviceTexture2DArray(DeviceTexture2DArray&& other) = default;
 
         inline const uint32 ArraySize() const { return mDepth; }
-        inline UnorderAccessView* GetUnorderedAccessView(uint32 index) { ASSERT(index < MipLevels() && !mUnorderedAccessViewArray[index].Empty()); return &mUnorderedAccessViewArray[index]; }
-        inline void SetUnorderedAccessView(int32 index, UnorderAccessView uav) { mUnorderedAccessViewArray[index] = std::move(uav); }
-
-    private:
-        using DeviceTexture::SetUnorderedAccessView;
-        using DeviceTexture::GetShaderResourceView;
+        inline UnorderAccessView* GetMipSliceUAV(uint32 index) { ASSERT(index < MipLevels() && !mMipSliceArrayUAV[index].Empty()); return &mMipSliceArrayUAV[index]; }
+        inline void SetMipSliceUAV(uint32 index, UnorderAccessView uav) { ASSERT(index < MipLevels()); mMipSliceArrayUAV[index] = std::move(uav); }
 
     protected:
         // each descriptor is a mip slice of texture2d array
-        std::vector<UnorderAccessView> mUnorderedAccessViewArray;
-    };
-
-    class DeviceRenderTarget : public DeviceTexture2D
-    {
-    public:
-        DeviceRenderTarget(D3D12Resource resource)
-            :DeviceTexture2D(std::move(resource))
-        {
-        }
-        DeviceRenderTarget(DeviceRenderTarget&& other) = default;
-
-        inline RenderTargetView* GetRenderTargetView() { ASSERT(!mRenderTargetView.Empty());  return &mRenderTargetView; }
-        inline void SetRenderTargetView(RenderTargetView view) { mRenderTargetView = std::move(view); }
-
-    protected:
-        RenderTargetView mRenderTargetView;
-    };
-
-    class DeviceDepthStencil : public DeviceTexture
-    {
-    public:
-        DeviceDepthStencil(D3D12Resource resource)
-            :DeviceTexture(std::move(resource))
-        {
-        }
-        DeviceDepthStencil(DeviceDepthStencil&& other) = default;
-
-        inline DepthStencilView* GetDepthStencilView() { ASSERT(!mDepthStencilView.Empty()); return &mDepthStencilView; }
-        inline void SetDepthStencilView(DepthStencilView view) { mDepthStencilView = std::move(view); }
-
-    protected:
-        DepthStencilView mDepthStencilView;
+        std::vector<UnorderAccessView> mMipSliceArrayUAV;
     };
 
     class DeviceStructuredBuffer : public IDeviceResource
@@ -414,6 +414,7 @@ namespace MRenderer
         void SetConstantBufferView(std::array<ConstantBufferView, FrameResourceCount> view_array);
         inline uint32 BufferSize() const{ return mBufferSize;}
 
+        // warn: do not call @CommitData multiple times in one frame
         template<typename T>
         void CommitData(const T& cbuffer)
         {
@@ -456,10 +457,9 @@ namespace MRenderer
         inline void SetRenderTargetView(RenderTargetView view) { mRenderTargetView = std::move(view); }
 
     protected:
+        // srv is not avaliable for back buffer for now
         using DeviceTexture::GetShaderResourceView;
-        using DeviceTexture::GetUnorderedResourceView;
         using DeviceTexture::SetShaderResourceView;
-        using DeviceTexture::SetUnorderedAccessView;
 
     protected:
         D3D12Resource mResource;

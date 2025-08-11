@@ -3,6 +3,7 @@
 #include "Resource/ResourceLoader.h"
 #include "Renderer/Device/Direct12/D3D12CommandList.h"
 
+
 namespace MRenderer
 {
     ShadingState::ShadingState()
@@ -48,82 +49,124 @@ namespace MRenderer
         ASSERT(mShaderProgram);
         ASSERT(texture);
 
-        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_Texture, semantic_name);
+        const ShaderAttribute* attr = FindShaderAttribute(EShaderAttrType_Texture, semantic_name);
 
-        if (!attr)
+        if (attr) 
         {
-            Log("Try To Assign Undefined Or Unused Texture ", semantic_name, "To ", mShaderProgram->GetFilePath());
+            mResourceBinding.SRVs[attr->mBindPoint] = texture->GetShaderResourceView();
+            return true;
+        }
+        else 
+        {
             return false;
         }
+    }
 
-        mResourceBinding.SRVs[attr->mBindPoint] = texture->GetShaderResourceView();
-        return true;
+    bool ShadingState::SetTexture(std::string_view semantic_name, DeviceTexture2D* texture, uint32 mip_slice)
+    {
+        ASSERT(mShaderProgram);
+        ASSERT(texture);
+
+        const ShaderAttribute* attr = FindShaderAttribute(EShaderAttrType_Texture, semantic_name);
+
+        if (attr)
+        {
+            mResourceBinding.SRVs[attr->mBindPoint] = texture->GetMipSliceSRV(mip_slice);
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
 
     bool ShadingState::SetRWTexture(std::string_view semantic_name, DeviceTexture2D* texture)
     {
         ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
+        const ShaderAttribute* attr = FindShaderAttribute(EShaderAttrType_RWTexture, semantic_name);
 
-        if (!attr)
+        if (attr) 
         {
-            Log("Try To Assign Undefined Or Unused RWTexture ", semantic_name, "To ", mShaderProgram->GetFilePath());
+            ASSERT(attr->mBindCount == 1);
+
+            mResourceBinding.UAVs[attr->mBindPoint] = texture->GetUnorderedResourceView();
+            return true;
+        }
+        else 
+        {
             return false;
         }
-        ASSERT(attr->mBindCount == 1);
+    }
 
-        mResourceBinding.UAVs[attr->mBindPoint] = texture->GetUnorderedResourceView();
-        return true;
+    bool ShadingState::SetRWTexture(std::string_view semantic_name, DeviceTexture2D* texture, uint32 mip_slice)
+    {
+        ASSERT(mShaderProgram && mIsCompute);
+        const ShaderAttribute* attr = FindShaderAttribute(EShaderAttrType_RWTexture, semantic_name);
+
+        if (attr)
+        {
+            ASSERT(attr->mBindCount == 1);
+
+            mResourceBinding.UAVs[attr->mBindPoint] = texture->GetMipSliceUAV(mip_slice);
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
 
     bool ShadingState::SetRWTextureArray(std::string_view semantic_name, DeviceTexture2DArray* texture_array)
     {
         ASSERT(mShaderProgram && mIsCompute);
-        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_RWTexture, semantic_name);
-
-        if (!attr)
+        const ShaderAttribute* attr = FindShaderAttribute(EShaderAttrType_RWTexture, semantic_name); //RWTextureArray is the RWTexture, just the bind count are different
+        
+        if (attr) 
         {
-            Log("Try To Assign Undefined Or Unused RWTextureArray ", semantic_name, "To ", mShaderProgram->GetFilePath());
+            //e.g shader code: "RWTexture2DArray PrefilterEnvMap[5]" require array has at least 5 mip levels
+            ASSERT(attr->mBindCount <= texture_array->MipLevels());
+
+            // assign each mip slice to the corresponding texture array
+            for (uint32 mip_level = 0; mip_level < texture_array->MipLevels(); mip_level++)
+            {
+                mResourceBinding.UAVs[attr->mBindPoint + mip_level] = texture_array->GetMipSliceUAV(mip_level);
+            }
+            return true;
+        }
+        else
+        {
             return false;
         }
-
-        //e.g shader code: "RWTexture2DArray PrefilterEnvMap[5]" require array has at least 5 mip levels
-        ASSERT(attr->mBindCount <= texture_array->MipLevels());
-
-        // assign each mip slice to the corresponding texture array
-        for (uint32 mip_level = 0; mip_level < texture_array->MipLevels(); mip_level++)
-        {
-            mResourceBinding.UAVs[attr->mBindPoint + mip_level] = texture_array->GetUnorderedAccessView(mip_level);
-        }
-        return true;
     }
 
     bool ShadingState::SetStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer)
     {
-        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_StructuredBuffer, semantic_name);
+        const ShaderAttribute* attr = FindShaderAttribute(EShaderAttrType_StructuredBuffer, semantic_name);
 
-        if (!attr)
+        if (attr) 
         {
-            Log("Try To Assign Undefined Or Unused StructuredBuffer", semantic_name, "To ", mShaderProgram->GetFilePath());
+            mResourceBinding.SRVs[attr->mBindPoint] = buffer->GetShaderResourceView();
+            return true;
+        }
+        else 
+        {
             return false;
         }
-
-        mResourceBinding.SRVs[attr->mBindPoint] = buffer->GetShaderResourceView();
-        return true;
     }
 
     bool ShadingState::SetRWStructuredBuffer(std::string_view semantic_name, DeviceStructuredBuffer* buffer)
     {
-        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(EShaderAttrType_RWStructuredBuffer, semantic_name);
+        const ShaderAttribute* attr = FindShaderAttribute(EShaderAttrType_RWStructuredBuffer, semantic_name);
 
-        if (!attr)
+        if (attr) 
         {
-            Log("Try To Assign Undefined Or Unused RWStructuredBuffer", semantic_name, "To ", mShaderProgram->GetFilePath());
+            mResourceBinding.UAVs[attr->mBindPoint] = buffer->GetUnorderedAccessView();
+            return true;
+        }
+        else 
+        {
             return false;
         }
-
-        mResourceBinding.UAVs[attr->mBindPoint] = buffer->GetUnorderedAccessView();
-        return true;
     }
 
     void ShadingState::ClearResourceBinding()
@@ -139,6 +182,19 @@ namespace MRenderer
     DeviceConstantBuffer* ShadingState::GetConstantBuffer()
     {
         return mShaderConstantBuffer.get();
+    }
+
+    const ShaderAttribute* ShadingState::FindShaderAttribute(EShaderAttrType type, std::string_view semantic_name)
+    {
+        const ShaderAttribute* attr = mShaderProgram->GetPrimaryShader()->FindAttribute(type, semantic_name);
+
+        if (!attr)
+        {
+            Log("Try to assign undefined or unused shader attribute:", semantic_name, "to shader:", mShaderProgram->GetFilePath());
+            return nullptr;
+        }
+
+        return attr;
     }
 
     D3D12ShaderProgram* ShadingState::GetShader()
@@ -190,7 +246,7 @@ namespace MRenderer
         mDepthStencil = mOutputNodes.back().get();
     }
 
-    void IRenderPass::WritePersistent(std::string_view name, IDeviceResource* persisten_resource)
+    void IRenderPass::WritePersistent(std::string_view name, DeviceTexture* persisten_resource)
     {
         mOutputNodes.push_back(RenderPassNode::PersistentPassResource(name, this, persisten_resource));
     }

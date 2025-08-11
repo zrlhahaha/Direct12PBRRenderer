@@ -1,0 +1,18 @@
+{
+    "@IResource": {},
+    "mParameterTable": {
+        "UseAlbedoMap": true,
+        "UseAmbientOcclusionMap": true,
+        "UseMetallicMap": true,
+        "UseNormalMap": true,
+        "UseRoughnessMap": true
+    },
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "AlbedoMap": "Asset/Model/Barrel\\Barrel_barrel_color.png",
+        "AmbientOcclusionMap": "Asset/Model/Barrel\\Barrel_barrel_ao.png",
+        "MetallicMap": "Asset/Model/Barrel\\Barrel_barrel_metallic.png",
+        "NormalMap": "Asset/Model/Barrel\\Barrel_barrel_normal.png",
+        "RoughnessMap": "Asset/Model/Barrel\\Barrel_barrel_roughness.png"
+    }
+}

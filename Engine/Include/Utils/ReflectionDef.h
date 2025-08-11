@@ -78,24 +78,30 @@ namespace MRenderer
         REFLECT_FIELD(mData, true)
     END_REFLECT_CLASS
 
+    BEGIN_REFLECT_CLASS(CubeMapTextureData, void)
+        REFLECT_FIELD(mData, true),
+        REFLECT_FIELD(mSHCoefficients, true)
+    END_REFLECT_CLASS
+
     BEGIN_REFLECT_CLASS(IResource, void)
         REFLECT_FIELD(mRepoPath, false)
     END_REFLECT_CLASS
 
     BEGIN_REFLECT_CLASS(MeshResource, IResource)
-        REFLECT_FIELD(mMeshData, true),
+        REFLECT_FIELD(mMeshPath, true),
         REFLECT_FIELD(mDeviceVertexBuffer, false),
-        REFLECT_FIELD(mDeviceIndexBuffer, false)
+        REFLECT_FIELD(mDeviceIndexBuffer, false),
+        REFLECT_FIELD(mBound, false)
     END_REFLECT_CLASS
 
     BEGIN_REFLECT_CLASS(TextureResource, IResource)
-        REFLECT_FIELD(mTextureData, true),
+        REFLECT_FIELD(mTexturePath, true),
         REFLECT_FIELD(mDeviceTexture, false)
     END_REFLECT_CLASS
 
     BEGIN_REFLECT_CLASS(CubeMapResource, IResource)
-        REFLECT_FIELD(mTextureData, true),
-        REFLECT_FIELD(mSHCoefficients, true),
+        REFLECT_FIELD(mTexturePath, true),
+        REFLECT_FIELD(mSHCoefficients, false),
         REFLECT_FIELD(mDeviceTexture2DArray, false)
     END_REFLECT_CLASS
 

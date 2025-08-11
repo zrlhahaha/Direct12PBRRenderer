@@ -1,34 +1,26 @@
 #pragma once
 #include <stack>
-#include "Renderer/Device/Direct12/DeviceResource.h"
 #include "Renderer/Pipeline/IPipeline.h"
+#include "Renderer/Device/Direct12/DeviceResource.h"
+#include "Renderer/Device/Direct12/MemoryAllocator.h"
 
 namespace MRenderer 
 {
-    class TransientTexturePool
+    class RTHandle 
     {
-        struct Item
-        {
-            bool Occupied = false;
-            std::shared_ptr<IDeviceResource> Resource = nullptr;
-        };
-
     public:
-        // allocate transient resource, could be render target and depth stencil depend on texture format
-        uint32 Allocate(TextureFormatKey key);
-        void Free(TextureFormatKey key, uint32 index);
-        void Reset();
-        IDeviceResource* GetResource(TextureFormatKey key, uint32 index);
 
     protected:
-        std::unordered_map<TextureFormatKey, std::vector<Item>> mTransientResources;
+        AllocationDesc mDesc;
+        std::string mName;
+        IDeviceResource* mResource;
     };
 
     class FrameGraph 
     {
     public:
         FrameGraph(IRenderPipeline* pipeline)  
-            : mRenderPipeline(pipeline)
+            : mRenderPipeline(pipeline), mHeap(GD3D12RawDevice)
         {
         }
 
@@ -46,6 +38,11 @@ namespace MRenderer
 
         IRenderPipeline* GetPipeline() const{ return mRenderPipeline;}
         const std::vector<IRenderPass*>& GetPassOrder() const{ return mPassOrder;}
+
+    protected:
+
+
+
     protected:
         void IncreseRef(RenderPassNode* node);
         void DecreseRef(RenderPassNode* node);
@@ -56,7 +53,7 @@ namespace MRenderer
     protected:
         std::vector<IRenderPass*> mPassOrder;
 
-        TransientTexturePool mRenderTargetPool;
+        D3D12Memory::MultiHeapMemoryAllocator mHeap;
         IRenderPipeline* mRenderPipeline;
     };
 }

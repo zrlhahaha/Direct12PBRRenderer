@@ -1,0 +1,18 @@
+{
+    "@IResource": {},
+    "mParameterTable": {
+        "UseAlbedoMap": true,
+        "UseAmbientOcclusionMap": true,
+        "UseMetallicMap": true,
+        "UseNormalMap": true,
+        "UseRoughnessMap": true
+    },
+    "mShaderPath": "gbuffer.hlsl",
+    "mTexturePath": {
+        "AlbedoMap": "Asset/Model/Suitcase\\Suitcase_Vintage_Suitcase_Colour.png",
+        "AmbientOcclusionMap": "Asset/Model/Suitcase\\Suitcase_Vintage_Suitcase_AO.png",
+        "MetallicMap": "Asset/Model/Suitcase\\Suitcase_Vintage_Suitcase_Metallic.png",
+        "NormalMap": "Asset/Model/Suitcase\\Suitcase_Vintage_Suitcase_Normal_OpenGL.png",
+        "RoughnessMap": "Asset/Model/Suitcase\\Suitcase_Vintage_Suitcase_Roughness.png"
+    }
+}

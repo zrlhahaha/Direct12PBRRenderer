@@ -194,7 +194,7 @@ namespace MRenderer
             return data_ptr;
         }
 
-        void Free(T* data_ptr)
+        void Free(T*& data_ptr)
         {
             Block* block = Block::GetBlockPtr(data_ptr);
             ASSERT(_RecycleCheck(block) && "block don't belong to this allocator");
@@ -213,6 +213,7 @@ namespace MRenderer
             }
 
             mSize -= 1;
+            data_ptr = nullptr;
         }
 
         template<typename U>
@@ -706,10 +707,7 @@ namespace MRenderer
 
         Allocation* Allocate(uint32_t size, uint32_t alignment)
         {
-            if (size > mSize) 
-            {
-                return nullptr;
-            }
+            ASSERT(size < mSize);
 
             ASSERT((alignment & (alignment - 1)) == 0 && alignment <= size); // alignment must be power of 2, or AlignUp will malfunction
 

@@ -6,7 +6,7 @@ from sphere_def import *
 def main():
     os.makedirs(MATERIAL_FOLDER, exist_ok=True)
     os.makedirs(MODEL_FOLDER, exist_ok=True)
-    assert(os.path.exists(MESH_FILE + ".bin"))
+    assert(os.path.exists(MESH_FILE + ".json"))
 
     # generate sphere materials with different roughness and metallic values
     for roughness in range(NUM_ROUGHNESS):
@@ -34,7 +34,7 @@ def main():
                     {
                         "@IResource": {},
                         "mMaterialPath": [
-                            "{}/{}/sphere_R{}_M{}.json".format(ROOT_FOLDER, MATERIAL_FOLDER, roughness, metallic)
+                            "{}/{}/sphere_R{}_M{}".format(ROOT_FOLDER, MATERIAL_FOLDER, roughness, metallic)
                         ],
                         "mMeshPath": "{}/{}".format(ROOT_FOLDER, MESH_FILE),
                     }

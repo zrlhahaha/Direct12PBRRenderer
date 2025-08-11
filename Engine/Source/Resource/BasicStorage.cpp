@@ -36,45 +36,13 @@ namespace MRenderer
         return static_cast<uint32>(DirectX::BitsPerPixel(format) / CHAR_BIT);
     }
 
-    // for tex2d and tex2d array for now, so array size is irrelevant, not correct for tex3d
-    // ref: https://learn.microsoft.com/en-us/windows/win32/direct3d12/subresources
-    uint32 CalculateTextureSize(uint32 width, uint32 height, uint32 mip_levels, uint32 pixel_size)
-    {
-        uint32 size = 0;
-        for (uint32 i = 0; i < mip_levels; i++)
-        {
-            uint32 mip_width = width >> i;
-            uint32 mip_height = height >> i;
-
-            ASSERT(mip_width > 0 && mip_height > 0 && "mip_levels exceeds the texture limitation");
-            size += mip_width * mip_height * pixel_size;
-        }
-        return size;
-    }
-
-    MipmapLayout CalculateMipmapLayout(uint32 width, uint32 height, uint32 mip_levels, uint32 pixel_size, uint32 mip_slice)
-    {
-        ASSERT(mip_slice < mip_levels && mip_slice >= 0);
-        uint32 base = CalculateTextureSize(width, height, mip_slice, pixel_size);
-
-        uint32 mip_width = width >> mip_slice;
-        uint32 mip_height = height >> mip_slice;
-        ASSERT(mip_width > 0 && mip_height > 0 && "mip_levels exceeds the texture limitation");
-
-        uint32 mip_size = mip_width * mip_height * pixel_size;
-
-        return MipmapLayout{ base, mip_size, mip_width, mip_height };
-    }
-
     BinaryData::BinaryData()
         :mSize(0), mData(nullptr)
     {
     }
 
     BinaryData::BinaryData(uint32 size)
-        :BinaryData()
     {
-        Log("BinaryData", size);
         mSize = size;
         mData = reinterpret_cast<uint8*>(malloc(size));
     }
@@ -82,8 +50,6 @@ namespace MRenderer
     BinaryData::BinaryData(const void* src_ptr, uint32 size)
         :BinaryData(size)
     {
-        Log("BinaryData", size);
-        mData = reinterpret_cast<uint8*>(malloc(size));
         memcpy(mData, src_ptr, size);
     }
 
@@ -91,7 +57,6 @@ namespace MRenderer
     {
         if (mData != nullptr)
         {
-            Log("~BinaryData", mSize);
             free(mData);
             mData = nullptr;
             mSize = 0;
@@ -207,6 +172,8 @@ namespace MRenderer
 
     void TextureData::BinaryDeserialize(RingBuffer& rb, TextureData& out_texture_data)
     {
+        TimeScope _scrop("TextureData::BinaryDeserialize");
+
         BinarySerialization::Deserialize(rb, out_texture_data.mInfo);
 
         uint32 compressed_size = rb.Read<uint32>();
@@ -221,7 +188,7 @@ namespace MRenderer
     }
 
     // theta: angle between y-axis phi: angle between x-axis
-    Vector4 TextureData::SampleTextureCube(const std::array<TextureData, 6>& data, float theta, float phi)
+    Vector4 CubeMapTextureData::Sample(const std::array<TextureData, 6>& data, float theta, float phi)
     {
         Vector2 tc;
         uint32 index = 0;
@@ -229,5 +196,15 @@ namespace MRenderer
 
         const TextureData& slice = data[index];
         return slice.Sample(tc.x, tc.y);
+    }
+
+    SH2CoefficientsPack CubeMapTextureData::GenerateSHCoefficients(const std::array<TextureData, NumCubeMapFaces>& texture)
+    {
+        SH2Coefficients shr;
+        SH2Coefficients shg;
+        SH2Coefficients shb;
+
+        SHBaker::ProjectEnvironmentMap(texture, shr, shg, shb);
+        return SHBaker::PackCubeMapSHCoefficient(shr, shg, shb);
     }
 }

@@ -1,7 +1,7 @@
 {
-    "@IResource": {},
-    "mMeshPath": "Asset/Model/Sphere/sphere_Mesh",
     "mMaterialPath": [
-        "Asset/Model/Sphere/SphereMaterial/sphere_R0_M0.json"
-    ]
+        "Asset/Model/Sphere/SphereMaterial/sphere_R0_M0"
+    ],
+    "@IResource": {},
+    "mMeshPath": "Asset/Model/Sphere/sphere_Mesh"
 }

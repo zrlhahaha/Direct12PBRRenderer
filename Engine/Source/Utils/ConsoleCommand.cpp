@@ -17,7 +17,7 @@ namespace MRenderer
 
         if (source_path == "" || dest_path == "")
         {
-            Log("Generation Failed, File Path Or Destination Path Is Empty");
+            Log("Generation failed, File path or destination path is empty");
             return;
         }
 
@@ -25,7 +25,7 @@ namespace MRenderer
         ASSERT(res);
 
         const uint32 IrradianceMapSize = 256;
-        auto irradiance_map = SHBaker::GenerateIrradianceMap(res->mTextureData, IrradianceMapSize, debug);
+        auto irradiance_map = SHBaker::GenerateIrradianceMap(res->ReadTextureFile().Data(), IrradianceMapSize, debug);
 
         const std::string filename[] = {"posx", "negx", "posy", "negy", "posz", "negz"};
         uint32 pixel_size = irradiance_map[0].PixelSize();
@@ -46,7 +46,7 @@ namespace MRenderer
             ThrowIfFailed(DirectX::SaveToHDRFile(img, ToWString(filepath).c_str()));
         }
 
-        Log("Irradiance Map Generation Finish, Resource Is Saved To ", dest_path);
+        Log("Irradiance map generation Finish, Resource is saved to ", dest_path);
     }
 
     void ImportModelCommand::Execute()
@@ -66,22 +66,18 @@ namespace MRenderer
 
         if (source_path == "" || repo_path == "")
         {
-            Log("Import Failed, File Path Or Destination Path Is Empty");
+            Log("Import failed, File path or destination path is empty");
             return;
         }
 
         if (std::filesystem::exists(repo_path))
         {
-            Log("Import Failed, Output Path Is Already Occupied");
+            Log("Import failed, Output path Is already occupied");
             return;
         }
 
-        std::shared_ptr<ModelResource> res = ResourceLoader::ImportModel(source_path.string(), repo_path.string(), model_scale, flip_uv_y);
-        if (res) 
-        {
-            ResourceLoader::Instance().DumpResource(*res);
-            Log("Import Model Finish, Resource Is Saved To ", repo_path);
-        }
+        ResourceLoader::ImportModel(source_path.string(), repo_path.string(), model_scale, flip_uv_y);
+        Log("Import finish, Resource is saved to", repo_path);
     }
 
 
@@ -94,22 +90,18 @@ namespace MRenderer
 
         if (source_path == "" || dest_path == "")
         {
-            Log("Import Failed, File Path Or Destination Path Is Empty");
+            Log("Import failed, file Path or destination path is empty");
             return;
         }
 
         if (std::filesystem::exists(dest_path))
         {
-            Log("Import Failed, Output Path Is Already Occupied");
+            Log("Import failed, Output path is already occupied");
             return;
         }
 
-        std::shared_ptr<TextureResource> res = ResourceLoader::ImportTexture(source_path.string(), dest_path.string(), static_cast<ETextureFormat>(format));
-        if (res)
-        {
-            ResourceLoader::Instance().DumpResource(*res);
-            Log("Import Model Finish, Resource Is Saved To ", dest_path);
-        }
+        ResourceLoader::ImportTexture(source_path.string(), dest_path.string(), static_cast<ETextureFormat>(format));
+        Log("Import finish, Resource is saved to", dest_path);
     }
 
     void ImportCubeMapCommand::Execute()
@@ -119,14 +111,13 @@ namespace MRenderer
 
         if (source_path == "" || dest_path == "")
         {
-            Log("Import Failed, File Path Or Destination Path Is Empty");
+            Log("Import failed, File path or destination path is empty");
             return;
         }
 
-        std::shared_ptr<CubeMapResource> res = ResourceLoader::ImportCubeMap(source_path, dest_path);
-        ResourceLoader::Instance().DumpResource(*res);
+        ResourceLoader::ImportCubeMap(source_path, dest_path);
 
-        Log("Import Model Finish, Resource Is Saved To ", dest_path);
+        Log("Import finish, Resource is saved to ", dest_path);
     }
 
     void CreateSphereModelCommand::Execute()
@@ -134,13 +125,13 @@ namespace MRenderer
         auto output_path = mParser.get<std::string>("output");
         if (output_path == "")
         {
-            Log("Create Sphere Model Failed, Output Path Is Empty");
+            Log("Create sphere model failed, output path is empty");
             return;
         }
 
-        std::shared_ptr<ModelResource> res = DefaultResource::CreateStandardSphereModel(output_path);
+        std::shared_ptr<ModelResource> res = ResourceLoader::CreateStandardSphereModel(output_path);
         ResourceLoader::Instance().DumpResource(*res);
-        Log("Create Sphere Model Finish, Resource Is Saved To ", output_path);
+        Log("Create sphere model finish, Resource is saved to ", output_path);
     }
 
     // note: command is executed on worker thread

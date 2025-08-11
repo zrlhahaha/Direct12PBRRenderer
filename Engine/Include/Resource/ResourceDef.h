@@ -41,9 +41,6 @@ namespace MRenderer
     class IResource
     {
     public:
-        constexpr static EResourceFormat ResourceFormat = EResourceFormat_None;
-
-    public:
         IResource()
         {
         }
@@ -63,20 +60,18 @@ namespace MRenderer
     class MeshResource : public IResource
     {
     public:
-        constexpr static EResourceFormat ResourceFormat = EResourceFormat_Binary;
-
-    public:
         MeshResource()
-            :IResource()
+            :IResource(), mVertexFormat(EVertexFormat_None)
         {
         }
 
-        MeshResource(std::string_view repo_path, MeshData mesh_data);
+        explicit MeshResource(std::string_view repo_path, std::string_view mesh_path);
 
-        inline const MeshData& GetMeshData() const { return mMeshData; }
-        DeviceVertexBuffer* GetVertexBuffer() { return mDeviceVertexBuffer.get();}
-        DeviceIndexBuffer* GetIndexBuffer() { return mDeviceIndexBuffer.get();}
-        inline const AABB& GetBound() const { return mMeshData.mBound; }
+        inline DeviceVertexBuffer* GetVertexBuffer() { return mDeviceVertexBuffer.get();}
+        inline DeviceIndexBuffer* GetIndexBuffer() { return mDeviceIndexBuffer.get();}
+        inline const EVertexFormat GetVertexFormat() const { return mVertexFormat; }
+        inline const AABB& GetBound() const { return mBound; }
+        inline const std::vector<SubMeshData>& GetSubMeshes() { return mSubMeshes; }
 
         void PostDeserialized();
 
@@ -85,46 +80,42 @@ namespace MRenderer
 
     public:
         // serializable member
-        MeshData mMeshData;
+        std::string mMeshPath;
 
         // runtime member
         std::shared_ptr<DeviceVertexBuffer> mDeviceVertexBuffer = nullptr;
         std::shared_ptr<DeviceIndexBuffer> mDeviceIndexBuffer = nullptr;
+        
+        EVertexFormat mVertexFormat;
+        AABB mBound;
+        std::vector<SubMeshData> mSubMeshes;
     };
 
 
     class TextureResource : public IResource 
     {
     public:
-        constexpr static EResourceFormat ResourceFormat = EResourceFormat_Binary;
-
-    public:
         TextureResource()
             :IResource()
         {
         }
 
-        TextureResource(std::string_view repo_path, TextureData data)
-            : IResource(), mTextureData(std::move(data))
+        TextureResource(std::string_view repo_path, std::string_view texture_path)
+            : IResource(), mTexturePath(texture_path)
         {
             SetRepoPath(repo_path);
             AllocateGPUResource();
         }
 
         void PostDeserialized();
-
-        inline DeviceTexture2D* Resource() 
-        {
-            ASSERT(mDeviceTexture);
-            return mDeviceTexture.get();
-        }
+        inline DeviceTexture2D* Resource() { ASSERT(mDeviceTexture); return mDeviceTexture.get(); }
 
     protected:
         void AllocateGPUResource();
 
     public:
         // serializable member
-        TextureData mTextureData;
+        std::string mTexturePath;
 
         // runtime member
         std::shared_ptr<DeviceTexture2D> mDeviceTexture;
@@ -133,53 +124,42 @@ namespace MRenderer
     class CubeMapResource : public IResource 
     {
     public:
-        constexpr static EResourceFormat ResourceFormat = EResourceFormat_Binary;
-
-    public:
         CubeMapResource()
             :IResource()
         {
         }
 
-        CubeMapResource(std::string_view repo_path, std::array<TextureData, 6> data)
-            :IResource(), mTextureData(std::move(data))
+        CubeMapResource(std::string_view repo_path, std::string_view texture_data_path)
+            :IResource(), mTexturePath(texture_data_path)
         {
             SetRepoPath(repo_path);
 
-            ASSERT(
-                data[0].mInfo == data[1].mInfo && data[1].mInfo == data[2].mInfo &&
-                data[2].mInfo == data[3].mInfo && data[3].mInfo == data[4].mInfo &&
-                data[4].mInfo == data[5].mInfo
-            );
-            AllocateGPUResource();
-            GenerateSHCoefficients();
+            CubeMapTextureData texture = ReadTextureFile();
+            AllocateGPUResource(texture);
         }
 
-        void GenerateSHCoefficients();
         void PostDeserialized();
 
         inline DeviceTexture2DArray* Resource() { ASSERT(mDeviceTexture2DArray); return mDeviceTexture2DArray.get(); }
         inline const SH2CoefficientsPack& GetSHCoefficients() const { return mSHCoefficients;}
+        CubeMapTextureData ReadTextureFile();
 
     protected:
-        void AllocateGPUResource();
+        void AllocateGPUResource(const CubeMapTextureData& texture);
 
     public:
         // serializable member
-        std::array<TextureData, 6> mTextureData;
-        SH2CoefficientsPack mSHCoefficients;
+        std::string mTexturePath;
         
         // runtime member
         std::shared_ptr<DeviceTexture2DArray> mDeviceTexture2DArray;
+        SH2CoefficientsPack mSHCoefficients;
     };
 
 
     class ShadingState;
     class MaterialResource : public IResource 
     {
-    public:
-        constexpr static EResourceFormat ResourceFormat = EResourceFormat_Json;
-
     public:
         MaterialResource()
             :IResource()
@@ -246,9 +226,6 @@ namespace MRenderer
 
     class ModelResource : public IResource
     {
-    public:
-        constexpr static EResourceFormat ResourceFormat = EResourceFormat_Json;
-
     public:
         ModelResource()
             :IResource()

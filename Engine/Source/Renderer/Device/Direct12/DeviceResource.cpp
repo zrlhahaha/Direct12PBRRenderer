@@ -39,7 +39,7 @@ namespace MRenderer
     }
 
     DeviceTexture2DArray::DeviceTexture2DArray(D3D12Resource resource)
-        :DeviceTexture(std::move(resource)), mUnorderedAccessViewArray(MipLevels())
+        :DeviceTexture(std::move(resource)), mMipSliceArrayUAV(MipLevels())
     {
     }
 

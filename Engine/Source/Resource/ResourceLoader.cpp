@@ -1,6 +1,7 @@
-#include "Resource/ResourceLoader.h"
 #include "Fundation.h"
+#include "Resource/ResourceLoader.h"
 #include "Resource/tiny_obj_loader.h"
+#include "Resource/DefaultResource.h"
 
 #include <numeric>
 #include <filesystem>
@@ -143,11 +144,17 @@ namespace MRenderer
         indicies.resize(vertices.size());
         std::iota(indicies.begin(), indicies.end(), 0);
 
-        std::string trimmed_path = std::filesystem::path(repo_path).replace_extension("").string(); // trim extension
-        auto mesh_resource = std::make_shared<MeshResource>(
-            trimmed_path + "_Mesh",
-            MeshData(StandardVertexFormat, vertices, indicies, sub_meshes, bound)
-        );
+        // dump mesh data
+        std::string trimmed_path = std::filesystem::path(repo_path).replace_extension("").string();
+        std::string mesh_path = trimmed_path + "_Mesh"; // trim extension
+        std::string mesh_data_path = GenerateDataPath(mesh_path);
+
+        MeshData mesh(StandardVertexFormat, vertices, indicies, sub_meshes, bound);
+        ASSERT(ResourceLoader::Instance().DumpBinary(mesh, mesh_data_path));
+
+        // dump mesh resource
+        auto mesh_resource = std::make_shared<MeshResource>(mesh_path, mesh_data_path);
+        ASSERT(ResourceLoader::Instance().DumpResource(*mesh_resource));
         
         // collect material and textures
         std::vector<std::shared_ptr<MaterialResource>> mats;
@@ -236,25 +243,37 @@ namespace MRenderer
             mats.push_back(material_resource);
         }
 
-        return std::make_shared<ModelResource>(std::format("{}_Model", trimmed_path), mesh_resource, mats);
+        auto model = std::make_shared<ModelResource>(std::format("{}_Model", trimmed_path), mesh_resource, mats);
+        ASSERT(ResourceLoader::Instance().DumpResource(*model));
+
+        return model;
     }
 
     std::shared_ptr<TextureResource> ResourceLoader::ImportTexture(std::string_view file_path, std::string_view repo_path, ETextureFormat foramt/*=ETextureFormat_None*/)
     {
+        namespace fs = std::filesystem;
+
         if (!std::filesystem::exists(file_path))
         {
             Log("File :", file_path, "Is Not Exist");
             return nullptr;
         }
 
-        std::optional<TextureData> tex = LoadImageFile(file_path, foramt);
-        if (!tex) 
+        std::optional<TextureData> texture_data = LoadImageFile(file_path, foramt);
+        if (!texture_data) 
         {
             return nullptr;
         }
 
-        auto res = std::make_shared<TextureResource>(repo_path, std::move(tex.value()));
-        return res;
+        // dump texture binary file
+        std::string texture_data_path = GenerateDataPath(repo_path);
+        ResourceLoader::Instance().DumpBinary(texture_data.value(), texture_data_path);
+
+        // dump texture resource file
+        std::shared_ptr<TextureResource> resource = std::make_shared<TextureResource>(repo_path, texture_data_path);
+        ResourceLoader::Instance().DumpResource(*resource);
+
+        return resource;
     }
 
     std::shared_ptr<CubeMapResource> ResourceLoader::ImportCubeMap(std::string_view file_path, std::string_view repo_path)
@@ -267,10 +286,40 @@ namespace MRenderer
             return nullptr;
         }
 
-        std::array<TextureData, 6> cube_map =  LoadCubeMap(file_path);
+        std::string cube_map_path = GenerateDataPath(repo_path);
 
-        auto ret = std::make_shared<CubeMapResource>(repo_path, std::move(cube_map));
-        return ret;
+        // dump texture data
+        CubeMapTextureData texture(LoadCubeMap(file_path));
+        ResourceLoader::Instance().DumpBinary(texture, cube_map_path);
+
+        // dump resource file
+        auto resource = std::make_shared<CubeMapResource>(repo_path, cube_map_path);
+        ResourceLoader::Instance().DumpResource(*resource);
+        return resource;
+    }
+
+    std::shared_ptr<ModelResource> ResourceLoader::CreateStandardSphereModel(std::string_view repo_path)
+    {
+        using std::filesystem::path;
+        std::string mesh_path = (path(repo_path) / path("sphere_Mesh")).string();
+        std::string material_path = (path(repo_path) / path("sphere_Mat")).string();
+        std::string model_path = (path(repo_path) / path("sphere_Model")).string();
+        std::string mesh_data_path = GenerateDataPath(mesh_path);
+
+        // dump mesh data
+        MeshData box_mesh = DefaultResource::StandardSphereMesh();
+        ASSERT(ResourceLoader::Instance().DumpBinary(box_mesh, mesh_data_path));
+
+        // dump resource file
+        std::shared_ptr<MeshResource> mesh = std::make_shared<MeshResource>(mesh_path, mesh_data_path);
+
+        std::vector<std::shared_ptr<MaterialResource>> mats;
+        mats.push_back(std::make_shared<MaterialResource>(material_path));
+        mats[0]->SetShader("gbuffer.hlsl");
+
+        std::shared_ptr<ModelResource> model = std::make_shared<ModelResource>(model_path, mesh, std::move(mats));
+        ResourceLoader::Instance().DumpResource(*model);
+        return model;
     }
 
     std::optional<TextureData> ResourceLoader::LoadImageFile(std::string_view local_path, ETextureFormat format/*=ETextureFormat_None*/)
@@ -356,7 +405,7 @@ namespace MRenderer
         return GenerateImageMipmaps(base_slice);
     }
 
-    std::array<TextureData, 6> ResourceLoader::LoadCubeMap(std::string_view filepath)
+    std::array<TextureData, NumCubeMapFaces> ResourceLoader::LoadCubeMap(std::string_view filepath)
     {
         using std::filesystem::path;
 
@@ -401,6 +450,16 @@ namespace MRenderer
         }
 
         return std::nullopt;
+    }
+
+    std::string ResourceLoader::GenerateDataPath(std::string_view path)
+    {
+        namespace fs = std::filesystem;
+
+        fs::path resource_path = fs::path(path);
+        fs::path data_path = resource_path.parent_path() / std::format("{}_{}", resource_path.stem().string(), "data");
+
+        return data_path.string();
     }
 
     TextureData ResourceLoader::GenerateImageMipmaps(const DirectX::Image* mip_0)

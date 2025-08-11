@@ -2,6 +2,7 @@
 #include "Resource/json.hpp"
 #include "Resource/VertexLayout.h"
 #include "Utils/Misc.h"
+#include "Utils/SH.h"
 
 namespace MRenderer
 {
@@ -35,7 +36,7 @@ namespace MRenderer
         BinaryData();
         explicit BinaryData(uint32 size);
         explicit BinaryData(const void* src_ptr, uint32 size);
-        
+
         BinaryData(const BinaryData& other) = delete;
         BinaryData(BinaryData&& other);
         BinaryData& operator=(BinaryData other);
@@ -123,9 +124,9 @@ namespace MRenderer
         MeshData(MeshData&&);
         MeshData& operator=(MeshData);
 
-        inline const void* VerticesData() const
+        inline const BinaryData& Vertices() const
         {
-            return mVertices.GetData();
+            return mVertices;
         }
 
         inline uint32 VerticesCount() const
@@ -138,9 +139,9 @@ namespace MRenderer
             return static_cast<uint32>(GetVertexLayout(mVertexFormat).VertexSize);
         }
 
-        inline const uint32* IndiciesData() const
+        inline const BinaryData& Indicies() const
         {
-            return reinterpret_cast<const uint32*>(mIndicies.GetData());
+            return mIndicies;
         }
 
         inline uint32 IndiciesCount() const
@@ -148,24 +149,19 @@ namespace MRenderer
             return static_cast<uint32>(mIndicies.GetSize() / sizeof(uint32));
         }
 
-        inline uint32 GetSubMeshCount() const
-        {
-            return static_cast<uint32>(mSubMeshes.size());
-        }
-
-        inline const SubMeshData& GetSubMesh(uint32 index) const
-        {
-            return mSubMeshes[index];
-        }
-
-        inline const std::vector<SubMeshData>& GetSubMeshData() const
+        inline const std::vector<SubMeshData>& GetSubMeshs() const
         {
             return mSubMeshes;
         }
 
-        inline EVertexFormat GetFormat() const
+        inline EVertexFormat Format() const
         {
             return mVertexFormat;
+        }
+
+        inline const AABB& Bound() const 
+        {
+            return mBound;
         }
 
         friend void Swap(MeshData& lhs, MeshData& rhs)
@@ -206,8 +202,40 @@ namespace MRenderer
         bool operator==(const TextureInfo& other) const = default;
     };
 
-    uint32 CalculateTextureSize(uint32 width, uint32 height, uint32 mip_levels, uint32 pixel_size);
-    MipmapLayout CalculateMipmapLayout(uint32 width, uint32 height, uint32 mip_levels, uint32 pixel_size, uint32 mip_slice);
+    // for tex2d and tex2d array for now, so array size is irrelevant, not correct for tex3d
+    // ref: https://learn.microsoft.com/en-us/windows/win32/direct3d12/subresources
+    inline constexpr uint32 CalculateTextureSize(uint32 width, uint32 height, uint32 mip_levels, uint32 pixel_size)
+    {
+        uint32 size = 0;
+        for (uint32 i = 0; i < mip_levels; i++)
+        {
+            uint32 mip_width = width >> i;
+            uint32 mip_height = height >> i;
+
+            ASSERT(mip_width > 0 && mip_height > 0 && "mip_levels exceeds the texture limitation");
+            size += mip_width * mip_height * pixel_size;
+        }
+        return size;
+    }
+
+    inline constexpr MipmapLayout CalculateMipmapLayout(uint32 width, uint32 height, uint32 mip_levels, uint32 pixel_size, uint32 mip_slice)
+    {
+        ASSERT(mip_slice < mip_levels && mip_slice >= 0);
+        uint32 base = CalculateTextureSize(width, height, mip_slice, pixel_size);
+
+        uint32 mip_width = width >> mip_slice;
+        uint32 mip_height = height >> mip_slice;
+        ASSERT(mip_width > 0 && mip_height > 0 && "mip_levels exceeds the texture limitation");
+
+        uint32 mip_size = mip_width * mip_height * pixel_size;
+
+        return MipmapLayout{ base, mip_size, mip_width, mip_height };
+    }
+
+    inline constexpr uint32 CalculateMaxMipLevels(uint32 width, uint32 height)
+    {
+        return int(Log2(Min(width, height))) + 1;
+    }
 
     // holds pixels of a 2d texture mip chain
     class TextureData
@@ -269,11 +297,34 @@ namespace MRenderer
         static void BinarySerialize(RingBuffer& rb, const TextureData& texture_data);
         static void BinaryDeserialize(RingBuffer& rb, TextureData& out_texture_data);
 
-        // theta: angle between y-axis phi: angle between x-axis
-        static Vector4 SampleTextureCube(const std::array<TextureData, 6>& data, float theta, float phi);
-
     public:
         TextureInfo mInfo;
         BinaryData mData;
+    };
+
+    class CubeMapTextureData 
+    {
+    public:
+        CubeMapTextureData() = default;
+
+        explicit CubeMapTextureData(std::array<TextureData, NumCubeMapFaces>&& data)
+            : mData(std::move(data))
+        {
+            mSHCoefficients = GenerateSHCoefficients(mData);
+        }
+
+        inline std::array<TextureData, NumCubeMapFaces>& Data() { return mData; }
+        inline const std::array<TextureData, NumCubeMapFaces>& Data() const { return mData; }
+        inline const SH2CoefficientsPack& GetSHCoefficients() const { return mSHCoefficients; }
+        
+        // theta: angle between y-axis phi: angle between x-axis
+        static Vector4 Sample(const std::array<TextureData, 6>& data, float theta, float phi);
+        
+        // generate sh coefficients
+        static SH2CoefficientsPack GenerateSHCoefficients(const std::array<TextureData, NumCubeMapFaces>& texture);
+
+    public:
+        std::array<TextureData, NumCubeMapFaces> mData;
+        SH2CoefficientsPack mSHCoefficients;
     };
 }
