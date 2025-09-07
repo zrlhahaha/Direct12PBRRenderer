@@ -11,6 +11,7 @@
 #include "Resource/Shader.h"
 #include "Resource/VertexLayout.h"
 #include "Resource/json.hpp"
+#include "Renderer/FrameGraphResource.h"
 
 
 namespace MRenderer 
@@ -18,131 +19,6 @@ namespace MRenderer
     class Scene;
     class Camera;
     class D3D12CommandList;
-
-    union TextureFormatKey
-    {
-        struct
-        {
-            uint16 Width;
-            uint16 Height;
-            uint16 MipLevels = 0;
-            ETextureFormat Format;
-            uint8 Padding1 = 0;
-        } Info;
-        uint64 Key;
-
-        TextureFormatKey() 
-            :Key(0)
-        {
-        }
-
-        TextureFormatKey(uint16 width, uint16 height, uint16 mip_levels, ETextureFormat format)
-            :Info{ width, height, mip_levels, format }
-        {
-        }
-
-        TextureFormatKey(const TextureFormatKey& other) 
-            :Key(other.Key)
-        {
-        }
-
-        TextureFormatKey& operator= (TextureFormatKey & other)
-        {
-            Key = other.Key;
-            return *this;
-        }
-
-        bool operator==(const TextureFormatKey& other) const
-        {
-            return Key == other.Key;
-        }
-    };
-
-    static_assert(sizeof(TextureFormatKey) == 8);
-}
-
-template <>
-struct std::hash<MRenderer::TextureFormatKey>
-{
-    std::size_t operator()(const MRenderer::TextureFormatKey& k) const
-    {
-        return k.Key;
-    }
-};
-
-namespace MRenderer
-{
-#ifdef false
-    enum ERenderItemType : uint8
-    {
-        ERenderItemType_DrawInstance = 0,
-        ERenderItemType_DrawScreen = 1,
-        ERenderItemType_Compute = 2,
-    };
-
-    struct RenderItem
-    {
-        ERenderItemType Type;
-
-        // mesh info
-        EVertexFormat VertexFormat;
-        const DeviceVertexBuffer* Vertices;
-        const DeviceIndexBuffer* Indicies;
-        uint32 IndexBegin;
-        uint32 IndexCount;
-
-        // textures and buffers
-        const ResourceBinding* ResourceBinding;
-        const D3D12ShaderProgram* Program;
-        DeviceConstantBuffer* ShaderConstantBuffer;
-        DeviceConstantBuffer* InstanceConstantBuffer;
-
-        // thread group size
-        uint32 ThreadGroupCountX;
-        uint32 ThreadGroupCountY;
-        uint32 ThreadGroupCountZ;
-
-        static RenderItem DrawInstance(EVertexFormat format, const DeviceVertexBuffer* vertices, const DeviceIndexBuffer* indices, uint32 index_begin, uint32 index_count, ShadingState* shading_state, DeviceConstantBuffer* object_constant_buffer)
-        {
-            return RenderItem
-            {
-                .Type = ERenderItemType_DrawInstance,
-                .VertexFormat = format,
-                .Vertices = vertices,
-                .Indicies = indices,
-                .IndexBegin = index_begin,
-                .IndexCount = index_count,
-                .ResourceBinding = &shading_state->GetResourceBinding(),
-                .Program = shading_state->GetShader(),
-                .ShaderConstantBuffer = shading_state->GetConstantBuffer(),
-                .InstanceConstantBuffer = object_constant_buffer,
-            };
-        }
-        static RenderItem DrawScreen(ShadingState* shading_state)
-        {
-            return RenderItem
-            {
-                .Type = ERenderItemType_DrawScreen,
-                .ResourceBinding = &shading_state->GetResourceBinding(),
-                .Program = shading_state->GetShader(),
-                .ShaderConstantBuffer = shading_state->GetConstantBuffer(),
-            };
-        }
-        static RenderItem Compute(ShadingState* shading_state, uint32 thread_group_x, uint32 thread_group_y, uint32 thread_group_z)
-        {
-            return RenderItem
-            {
-                .Type = ERenderItemType_Compute,
-                .ResourceBinding = &shading_state->GetResourceBinding(),
-                .Program = shading_state->GetShader(),
-                .ShaderConstantBuffer = shading_state->GetConstantBuffer(),
-                .ThreadGroupCountX = thread_group_x,
-                .ThreadGroupCountY = thread_group_y,
-                .ThreadGroupCountZ = thread_group_z,
-            };
-        }
-    };
-#endif
 
     enum EConstantBufferType
     {
@@ -273,7 +149,7 @@ namespace MRenderer
             mShaderConstantBuffer->CommitData(t);
         }
 
-        friend void Swap(ShadingState& lhs, ShadingState& rhs) 
+        friend void swap(ShadingState& lhs, ShadingState& rhs) 
         {
             using std::swap;
             swap(lhs.mResourceBinding, rhs.mResourceBinding);
@@ -291,89 +167,6 @@ namespace MRenderer
         std::shared_ptr<DeviceConstantBuffer> mShaderConstantBuffer;
     };
 
-    enum ERenderPassNodeType 
-    {
-        ERenderPassNodeType_Transient = 0, // reference to a transient RT
-        ERenderPassNodeType_Reference = 1, // reference to a transient RT holds by other node
-        ERenderPassNodeType_Persisten = 2, // reference to a persisten RT
-    };
-
-
-    class IRenderPass;
-    struct RenderPassNode
-    {
-    public:
-        TextureFormatKey GetTextureFormatKey();
-
-        // get the actual gpu resource, should only be called after the RenderGraph is compiled, or it will return nullptr instead
-        IDeviceResource* GetResource();
-
-        // the actual RenderPassNode who owns the transient resource, which is the first IRenderPass who declare the resource
-        RenderPassNode* GetActualPassNode();
-
-    public:
-        static std::unique_ptr<RenderPassNode> PersistentPassResource(std::string_view name, IRenderPass* pass, IDeviceResource* tex)
-        {
-            return std::unique_ptr<RenderPassNode>(
-                new RenderPassNode{
-                    .Name = name.data(),
-                    .Pass = pass,
-                    .Type = ERenderPassNodeType_Persisten,
-                    .PersistentResource = tex,
-                }
-            );
-        }
-
-        static std::unique_ptr<RenderPassNode> TransientPassResource(std::string_view name, IRenderPass* pass, TextureFormatKey key)
-        {
-            return std::unique_ptr<RenderPassNode>(
-                new RenderPassNode{
-                    .Name = name.data(),
-                    .Pass = pass,
-                    .Type = ERenderPassNodeType_Transient,
-                    .TransientResource = 
-                        {
-                            .RenderTargetKey = key,
-                        }
-                }
-            );
-        }
-
-        static std::unique_ptr<RenderPassNode> TransientPassResourceReference(std::string_view name, IRenderPass* pass, RenderPassNode* node)
-        {
-            return std::unique_ptr<RenderPassNode>(
-                new RenderPassNode{
-                    .Name = name.data(),
-                    .Pass = pass,
-                    .Type = ERenderPassNodeType_Reference,
-                    .PassNodeReference = node,
-                }
-            );
-        }
-
-    public:
-        std::string Name;
-        IRenderPass* Pass = nullptr;
-        uint32 RefCount = 0; // used for transient resource lifetime tracking
-        ERenderPassNodeType Type = ERenderPassNodeType_Transient;
-
-        union 
-        {
-            // for persisten resource
-            IDeviceResource* PersistentResource;
-            // for transient resource, refer to a trasient resource in RenderTargetPool
-            struct 
-            {
-                DeviceTexture2D* Resource;
-                TextureFormatKey RenderTargetKey;
-                uint32 Index;
-            } TransientResource;
-            
-            // for transient resource reference, refer to transient RT belongs to another RenderPassNode
-            RenderPassNode* PassNodeReference;
-        };
-    };
-
     class IRenderPass
     {
         friend class FrameGraph;
@@ -388,61 +181,88 @@ namespace MRenderer
         IRenderPass& operator=(const IRenderPass&) = delete;
         IRenderPass& operator=(IRenderPass&&) = delete;
 
-        inline RenderPassNode* IndexRenderTarget(uint32 index) { return mRenderTargets[index]; }
-        inline RenderPassNode* GetDepthStencil() { return mDepthStencil; }
-        inline const std::array<RenderPassNode*, MaxRenderTargets>& GetRenderTargetNodes() const { return mRenderTargets; }
-        inline uint32 GetRenderTargetsSize() const{ return mNumRenderTargets; }
+        inline const std::vector<FGResourceId>& GetInputResources() const { return mInputResources; }
+        inline const std::vector<FGResourceId>& GetOutputResources() const { return mOutputResources; }
 
-        // declare other render pass's output texture as this pass's input
-        RenderPassNode* SampleTexture(RenderPassNode* node);
-        RenderPassNode* SampleTexture(IRenderPass* pass, std::string_view output_name);
-
-        // create transient RT and write to it
-        void WriteRenderTarget(std::string_view name, TextureFormatKey key);
-
-        // write to previous pass's output RT
-        void WriteRenderTarget(std::string_view name, RenderPassNode* node);
-
-        // create transient depth_stencil and write to it
-        void WriteDepthStencil(uint32 width, uint32 height);
-
-        // write to previous pass's depth_stencil
-        void WriteDepthStencil(RenderPassNode* node);
-
-        // delcare a persisten resource as pass output
-        void WritePersistent(std::string_view name, DeviceTexture* persisten_resource);
-
-        RenderPassNode* FindOutput(std::string_view name); 
-        RenderPassNode* FindInput(std::string_view name);
-
-        const RenderPassStateDesc* GetPassStateDesc() const;
     protected:
-        virtual void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) {};
+        inline void ReadResource(FGResourceId id) 
+        { 
+            ASSERT(std::find(mInputResources.begin(), mInputResources.end(), id) == mInputResources.end());
+            mInputResources.push_back(id);
+        }
 
-        void UpdatePassStateDesc();
+        inline void WriteResource(FGResourceId id) 
+        {
+            ASSERT(std::find(mOutputResources.begin(), mOutputResources.end(), id) == mOutputResources.end());
+            mOutputResources.push_back(id);
+        }
+
+        // declare this pass will read or write to certain resources
+        inline void WriteTransientTexture(FGResourceId id, uint32 width, uint32 height, uint32 mip_levels, ETextureFormat format, ETexture2DFlag flag=ETexture2DFlag_AllowRenderTarget)
+        {
+            FGResourceDescriptionTable::Instance()->DeclareTransientTexture(id, width, height, mip_levels, format, flag);
+            WriteResource(id);
+        }
+
+        inline void WriteTransientBuffer(FGResourceId id, uint32 size, uint32 stride)
+        {
+            FGResourceDescriptionTable::Instance()->DeclareTransientBuffer(id, size, stride);
+            WriteResource(id);
+        }
+
+        inline void WritePersistentResource(FGResourceId id, IDeviceResource* res)
+        {
+            FGResourceDescriptionTable::Instance()->DeclarePersistentResource(id, res);
+            WriteResource(id);
+        }
+
+        IDeviceResource* GetTransientResource(FGContext* context, FGResourceId id);
+
+        virtual void Execute(FGContext* context) = 0;
 
     protected:
         // the number and format of render target and depth stencil that this pass is gonna write
         // it's matained by @FrameGraph
-        RenderPassStateDesc mPassState;
+        GraphicsPassPsoDesc mPassState;
 
-        // pass execution orders depends on mInputNodes and mOutputNodes
-        // mOutputNodes contains RenderTarget and DepthStencil that are gonna be writed by this pass
-        // these resources might belong to this pass, or referecned from other pass
-        std::vector<std::unique_ptr<RenderPassNode>> mOutputNodes;
-        
-        // mInputNodes contains other pass's RenderTarget and DepthStencil that are gonna be sampled by this pass
-        std::vector<RenderPassNode*> mInputNodes;
-        
-        // render targets for this pass, use WriteRenderTarget to add one
-        std::array<RenderPassNode*, MaxRenderTargets> mRenderTargets;
-        // depth-stencil for this pass use WriteDepthStencil to add one
-        RenderPassNode* mDepthStencil = nullptr;
+        std::vector<FGResourceId> mInputResources;
+        std::vector<FGResourceId> mOutputResources;
+    };
 
-        uint8 mNumRenderTargets = 0;
-        uint8 mRefCount = 0; // for topology sort
-        bool mSearchVisited = false; // for search effectivce pass
-        bool mSortVisited = false; // for topology sort
+    class PresentPass : public IRenderPass
+    {
+    public:
+        static constexpr std::string_view Input_FinalTexture = "InputTexture";
+
+    public:
+        PresentPass()
+            :mFinalTexture(InvalidFGResourceId)
+        {
+        }
+
+        void Execute(FGContext* context) override;
+        void SetFinalTexture(FGResourceId id);
+    protected:
+        FGResourceId mFinalTexture;
+    };
+
+    class GraphicsPass : public IRenderPass 
+    {
+    public:
+        GraphicsPass() 
+            : IRenderPass(), mPassPsoDesc{}
+        {
+        }
+
+        inline const GraphicsPassPsoDesc& GetPsoDesc() const { return mPassPsoDesc; }
+        inline void SetPsoDesc(const GraphicsPassPsoDesc& pso_desc) { mPassPsoDesc = pso_desc; }
+
+    protected:
+        GraphicsPassPsoDesc mPassPsoDesc;
+    };
+
+    class ComputePass : public IRenderPass 
+    {
     };
 
     class IRenderPipeline 
@@ -450,22 +270,18 @@ namespace MRenderer
         friend class FrameGraph;
     public:
         IRenderPipeline()
-            :mPresentPass(nullptr)
         {
+            mPresentPass = std::make_unique<PresentPass>();
         }
         virtual ~IRenderPipeline() {}
 
         IRenderPipeline(const IRenderPipeline&) = delete;
         IRenderPipeline& operator=(const IRenderPipeline&) = delete;
 
-        inline IRenderPass* GetPresentPass() { ASSERT(mPresentPass); return mPresentPass; }
-        inline void SetPresentPass(IRenderPass* pass) { mPresentPass = pass; }
-
-        virtual void Setup() = 0;
+        virtual std::vector<IRenderPass*> Setup() = 0;
         virtual FrustumCullStatus GetStatus() const { return FrustumCullStatus{}; };
 
     protected:
-        // the last pass in the render graph
-        IRenderPass* mPresentPass;
+        std::unique_ptr<PresentPass> mPresentPass;
     };
 }

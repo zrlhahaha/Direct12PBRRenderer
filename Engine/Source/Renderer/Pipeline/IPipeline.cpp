@@ -2,6 +2,7 @@
 #include "Renderer/Pipeline/IPipeline.h"
 #include "Resource/ResourceLoader.h"
 #include "Renderer/Device/Direct12/D3D12CommandList.h"
+#include "Renderer/FrameGraph.h"
 
 
 namespace MRenderer
@@ -14,12 +15,12 @@ namespace MRenderer
     ShadingState::ShadingState(ShadingState&& other)
         :ShadingState()
     {
-        Swap(*this, other);
+        swap(*this, other);
     }
 
     ShadingState& ShadingState::operator=(ShadingState other)
     {
-        Swap(*this, other);
+        swap(*this, other);
         return *this;
     }
 
@@ -40,7 +41,7 @@ namespace MRenderer
         
         if (!mShaderConstantBuffer || mShaderConstantBuffer->BufferSize() != size)
         {
-            mShaderConstantBuffer = GD3D12Device->CreateConstBuffer(size);
+            mShaderConstantBuffer = GD3D12ResourceAllocator->CreateConstBuffer(size);
         }
     }
 
@@ -202,146 +203,6 @@ namespace MRenderer
         return mShaderProgram;
     }
 
-    RenderPassNode* IRenderPass::SampleTexture(RenderPassNode* node)
-    {
-        ASSERT(node);
-        mInputNodes.push_back(node);
-        return node;
-    }
-
-    RenderPassNode* IRenderPass::SampleTexture(IRenderPass* pass, std::string_view output_name)
-    {
-        ASSERT(pass);
-        RenderPassNode* node = pass->FindOutput(output_name);
-        ASSERT(node);
-        mInputNodes.push_back(node);
-        return node;
-    }
-
-    void IRenderPass::WriteRenderTarget(std::string_view name, TextureFormatKey key)
-    {
-        ASSERT(mNumRenderTargets != MaxRenderTargets);
-        mOutputNodes.push_back(RenderPassNode::TransientPassResource(name, this, key));
-        mRenderTargets[mNumRenderTargets++] = mOutputNodes.back().get();
-    }
-
-    void IRenderPass::WriteRenderTarget(std::string_view name, RenderPassNode* node)
-    {
-        ASSERT(mNumRenderTargets != MaxRenderTargets);
-        mOutputNodes.push_back(RenderPassNode::TransientPassResourceReference(name, this, node));
-        mRenderTargets[mNumRenderTargets++] = mOutputNodes.back().get();
-    }
-
-    void IRenderPass::WriteDepthStencil(uint32 width, uint32 height)
-    {
-        ASSERT(!mDepthStencil && "caon only write to one depth-stencil at a time");
-        mOutputNodes.push_back(RenderPassNode::TransientPassResource("DepthStencil", this, TextureFormatKey(width, height, ETextureFormat_DepthStencil)));
-        mDepthStencil = mOutputNodes.back().get();
-    }
-
-    void IRenderPass::WriteDepthStencil(RenderPassNode* node)
-    {
-        ASSERT(!mDepthStencil && "caon only write to one depth-stencil at a time");
-        mOutputNodes.push_back(RenderPassNode::TransientPassResourceReference("DepthStencil", this, node));
-        mDepthStencil = mOutputNodes.back().get();
-    }
-
-    void IRenderPass::WritePersistent(std::string_view name, DeviceTexture* persisten_resource)
-    {
-        mOutputNodes.push_back(RenderPassNode::PersistentPassResource(name, this, persisten_resource));
-    }
-
-    RenderPassNode* IRenderPass::FindOutput(std::string_view name)
-    {
-        auto ret = std::find_if(mOutputNodes.begin(), mOutputNodes.end(), [&](std::unique_ptr<RenderPassNode>& node) { return node->Name == name; });
-        ASSERT(ret != mOutputNodes.end());
-
-        return (ret != mOutputNodes.end()) ? ret->get() : nullptr;
-    }
-
-    RenderPassNode* IRenderPass::FindInput(std::string_view name)
-    {
-        auto ret = std::find_if(mInputNodes.begin(), mInputNodes.end(), [&](RenderPassNode* node) { return node->Name == name; });
-        ASSERT(ret != mInputNodes.end());
-
-        return (ret != mInputNodes.end()) ? *ret : nullptr;
-    }
-
-    void IRenderPass::UpdatePassStateDesc()
-    {
-        mPassState.DepthStencilFormat = static_cast<ETextureFormat>(mDepthStencil ? mDepthStencil->GetTextureFormatKey().Info.Format : ETextureFormat_None);
-        mPassState.NumRenderTarget = GetRenderTargetsSize();
-
-        for (uint32 i = 0; i < mPassState.NumRenderTarget; i++)
-        {
-            mPassState.RenderTargetFormats[i] = static_cast<ETextureFormat>(mRenderTargets[i]->GetTextureFormatKey().Info.Format);
-        }
-    }
-
-    const RenderPassStateDesc* IRenderPass::GetPassStateDesc() const
-    {
-        return &mPassState;
-    }
-    
-    TextureFormatKey RenderPassNode::GetTextureFormatKey()
-    {
-        if (Type == ERenderPassNodeType_Transient)
-        {
-            return TransientResource.RenderTargetKey;
-        }
-        else if (Type == ERenderPassNodeType_Persisten)
-        {
-            DeviceTexture* texture = dynamic_cast<DeviceTexture*>(PersistentResource);
-            ASSERT(texture);
-
-            return TextureFormatKey
-            {
-                static_cast<uint16>(texture->Width()),
-                static_cast<uint16>(texture->Height()),
-                texture->Resource()->Format(),
-            };
-        }
-        else
-        {
-            return PassNodeReference->GetTextureFormatKey();
-        }
-    }
-
-    IDeviceResource* RenderPassNode::GetResource()
-    {
-        if (Type == ERenderPassNodeType_Transient)
-        {
-            ASSERT(TransientResource.Resource);
-            return TransientResource.Resource;
-        }
-        else if (Type == ERenderPassNodeType_Persisten)
-        {
-            return PersistentResource;
-        }
-        else if (Type == ERenderPassNodeType_Reference)
-        {
-            return PassNodeReference->GetResource();
-        }
-        else 
-        {
-            ASSERT(false);
-            return nullptr;
-        }
-    }
-
-    // find the RenderPassNode that holds the actual resource
-    RenderPassNode* RenderPassNode::GetActualPassNode()
-    {
-        if (Type == ERenderPassNodeType_Reference) 
-        {
-            return PassNodeReference->GetActualPassNode();
-        }
-        else 
-        {
-            return this;
-        }
-    }
-
     void ShaderParameter::JsonSerialize(nlohmann::json& json, const ShaderParameter& t)
     {
         Overload overloads{
@@ -383,5 +244,25 @@ namespace MRenderer
             else if (json.size() == 4)
                 overloads(json.get<std::array<float, 4>>());
         }
+    }
+
+    void PresentPass::Execute(FGContext* context)
+    {
+        ASSERT(mFinalTexture != InvalidFGResourceId);
+
+        DeviceTexture2D* tex = dynamic_cast<DeviceTexture2D*>(GetTransientResource(context, mFinalTexture));
+        context->CommandList->Present(tex);
+    }
+
+    void PresentPass::SetFinalTexture(FGResourceId id)
+    {
+        ASSERT(mFinalTexture == InvalidFGResourceId);
+        ReadResource(id);
+        mFinalTexture = id;
+    }
+
+    inline IDeviceResource* IRenderPass::GetTransientResource(FGContext* context, FGResourceId id)
+    {
+        return context->FrameGraph->GetFGResource(this, id);
     }
 }

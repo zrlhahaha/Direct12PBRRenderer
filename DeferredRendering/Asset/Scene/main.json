@@ -1,6 +1,64 @@
 {
     "@IResource": null,
-    "mSceneLight": [],
+    "mSceneLight": 
+    [
+        {
+            "@SceneObject": {
+                "mName": "light_0",
+                "mTranslation": {
+                    "x": -2.0,
+                    "z": 5,
+                    "y": 1.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mColor": 
+            {
+                "x": 1.0,
+                "z": 0.0,
+                "y": 0.0
+            },
+            "mRadius": 5.0,
+            "mIntensity": 1.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_1",
+                "mTranslation": {
+                    "x": 2.0,
+                    "z": 5,
+                    "y": 1.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "z": 0.0,
+                    "y": 0.0
+                },
+                "mScale": {
+                    "x": 0.5,
+                    "z": 0.5,
+                    "y": 0.5
+                }
+            },
+            "mColor": 
+            {
+                "x": 1.0,
+                "z": 0.0,
+                "y": 0.0
+            },
+            "mRadius": 5.0,
+            "mIntensity": 1.0
+        }
+    ],
     "mSceneModel": [
         {
             "@SceneObject": {

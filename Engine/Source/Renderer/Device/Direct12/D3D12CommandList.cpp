@@ -269,7 +269,7 @@ namespace MRenderer
                 root_parameter.StageSRV(i, view->Descriptor());
 
                 D3D12Resource* resource = view->Resource();
-                if (view->Resource()->Format() == static_cast<ETextureFormat>(D3D12Device::DepthStencilFormat))
+                if (view->Resource()->Format() == static_cast<ETextureFormat>(D3D12ResourceAllocator::DepthStencilFormat))
                 {
                     resource->TransitionBarrier(GetCommandList(), D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
                 }
@@ -293,12 +293,12 @@ namespace MRenderer
 
         // sampler
         static std::shared_ptr<DeviceSampler> sampler[] = {
-            GD3D12Device->CreateSampler(ESamplerFilter_Point, ESamplerAddressMode_Wrap),
-            GD3D12Device->CreateSampler(ESamplerFilter_Point, ESamplerAddressMode_Clamp),
-            GD3D12Device->CreateSampler(ESamplerFilter_Linear, ESamplerAddressMode_Wrap),
-            GD3D12Device->CreateSampler(ESamplerFilter_Linear, ESamplerAddressMode_Clamp),
-            GD3D12Device->CreateSampler(ESamplerFilter_Anisotropic, ESamplerAddressMode_Wrap),
-            GD3D12Device->CreateSampler(ESamplerFilter_Anisotropic, ESamplerAddressMode_Clamp),
+            GD3D12ResourceAllocator->CreateSampler(ESamplerFilter_Point, ESamplerAddressMode_Wrap),
+            GD3D12ResourceAllocator->CreateSampler(ESamplerFilter_Point, ESamplerAddressMode_Clamp),
+            GD3D12ResourceAllocator->CreateSampler(ESamplerFilter_Linear, ESamplerAddressMode_Wrap),
+            GD3D12ResourceAllocator->CreateSampler(ESamplerFilter_Linear, ESamplerAddressMode_Clamp),
+            GD3D12ResourceAllocator->CreateSampler(ESamplerFilter_Anisotropic, ESamplerAddressMode_Wrap),
+            GD3D12ResourceAllocator->CreateSampler(ESamplerFilter_Anisotropic, ESamplerAddressMode_Clamp),
         };
 
         for (uint32 i = 0; i < std::size(sampler); i++) 
@@ -316,7 +316,7 @@ namespace MRenderer
         }
     }
 
-    void D3D12CommandList::SetGraphicsPipelineState(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program)
+    void D3D12CommandList::SetGraphicsPipelineState(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const GraphicsPassPsoDesc* pass_desc, const D3D12ShaderProgram* program)
     {
         ASSERT(pipeline_desc && pass_desc && program);
         

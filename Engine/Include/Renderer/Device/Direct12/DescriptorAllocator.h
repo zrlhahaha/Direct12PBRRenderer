@@ -26,14 +26,14 @@ namespace MRenderer
         CPUDescriptor(CPUDescriptor&& other) 
             : CPUDescriptor()
         {
-            Swap(*this, other);
+            swap(*this, other);
         }
 
         ~CPUDescriptor();
 
         CPUDescriptor& operator=(CPUDescriptor other) 
         {
-            Swap(*this, other);
+            swap(*this, other);
             return *this;
         }
 
@@ -42,7 +42,7 @@ namespace MRenderer
         inline D3D12CPUDescriptorHeap* SourceHeap() {return mSourceDescriptorHeap;}
         inline D3D12_DESCRIPTOR_HEAP_TYPE HeapType() const { return mHeapType; }
 
-        friend void Swap(CPUDescriptor& lhs, CPUDescriptor& rhs) 
+        friend void swap(CPUDescriptor& lhs, CPUDescriptor& rhs) 
         {
             std::swap(lhs.mCPUDescriptorHandle, rhs.mCPUDescriptorHandle);
             std::swap(lhs.mHeapType, rhs.mHeapType);

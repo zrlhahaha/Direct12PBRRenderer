@@ -25,6 +25,7 @@ set(SOURCE_FILES
     ${SOURCE_DIR}/Renderer/Scene.cpp
     ${SOURCE_DIR}/Renderer/RenderScheduler.cpp
     ${SOURCE_DIR}/Renderer/FrameGraph.cpp
+    ${SOURCE_DIR}/Renderer/FrameGraphResource.cpp
     ${SOURCE_DIR}/Renderer/Pipeline/IPipeline.cpp
     ${SOURCE_DIR}/Renderer/Pipeline/DeferredPipeline.cpp
     ${SOURCE_DIR}/Resource/ResourceLoader.cpp
@@ -62,6 +63,7 @@ set(HEADER_FILES
     ${INCLUDE_DIR}/Renderer/Camera.h
     ${INCLUDE_DIR}/Renderer/Scene.h
     ${INCLUDE_DIR}/Renderer/FrameGraph.h
+    ${INCLUDE_DIR}/Renderer/FrameGraphResource.h
     ${INCLUDE_DIR}/Utils/Console.h
     ${INCLUDE_DIR}/Utils/Allocator.h
     ${INCLUDE_DIR}/Utils/Constexpr.h

@@ -96,21 +96,14 @@ namespace MRenderer
         bool prefer_commited;
     };
 
-    enum EMemoryAllocationType
-    {
-
-    };
-
     namespace D3D12Memory
     {
-        class MemoryAllocator;
-
         // In order to support Tier 1 heaps, buffers, textures, and RT, DS textures need to be categorized into different heaps.
-        // ref: https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_resource_heap_tier
-        constexpr D3D12_HEAP_FLAGS DeviceHeapFlags[] = { D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES, D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES, D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS};
+// ref: https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_resource_heap_tier
+        constexpr D3D12_HEAP_FLAGS DeviceHeapFlags[] = { D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES, D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES, D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS };
         constexpr D3D12_HEAP_TYPE DeviceHeapTypes[] = { D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_HEAP_TYPE_READBACK };
-
         constexpr uint32 DeviceHeapCount = static_cast<uint32>(std::size(DeviceHeapTypes) * std::size(DeviceHeapFlags)); // each heap usage has three kind of heap, default, upload and readback
+
         constexpr uint32 DeviceHeapPageSize = 64 * 1024 * 1024; // 64mb
         constexpr uint32 MaxAllocationSize = 2048 * 2048 * 32; // maximum allocation is the size of a 2048*2048 rgba texture
         constexpr uint32 MinAllocationSize = 256; // minimum allocation is the size of a samllest const buffer
@@ -121,6 +114,9 @@ namespace MRenderer
 
         using MetaAllocator = TLSFMeta<MinAllocationSize, FLS(MaxAllocationSize)>;
         using MetaAllocation = MetaAllocator::Allocation;
+
+        class HeapMemoryAllocator;
+        class ID3D12MemoryAllocator;
 
         struct PlacedAllocation
         {
@@ -139,13 +135,15 @@ namespace MRenderer
 
         struct MemoryAllocation
         {
-            friend class MemoryAllocator;
+            friend class D3D12TransientMemoryAllocator;
+            friend class D3D12MemoryAllocator;
+
         private:
             std::variant<PlacedAllocation, CommitedAllocation> Allocation;
-            MemoryAllocator* Source;
+            ID3D12MemoryAllocator* Source;
 
         public:
-            inline ID3D12Resource* Resource()
+            ID3D12Resource* Resource()
             {
                 Overload overloads =
                 {
@@ -156,10 +154,7 @@ namespace MRenderer
                 return std::visit(overloads, Allocation);
             }
 
-            inline MemoryAllocator* Allocator() const
-            {
-                return Source;
-            }
+            inline ID3D12MemoryAllocator* Allocator() { return Source; }
         };
 
         // This class uses a TLSF memory pool to manage a section of GPU memory.
@@ -178,7 +173,14 @@ namespace MRenderer
 
             // only release the MetaAllocation, allow other resource overlay with it
             // it requires that the previous resources and the resources allocated later not to be used simultaneously
-            void AliasFree(PlacedAllocation& allocation);
+            void ReleasePlacedMemory(PlacedAllocation& allocation);
+            void AliasReset()
+            {
+                for (auto& meta : mPagesMeta) 
+                {
+                    meta.Reset();
+                }
+            }
 
         protected:
             D3D12_RESOURCE_ALLOCATION_INFO QueryResourceSizeAndAlignment(D3D12_RESOURCE_DESC desc);
@@ -206,7 +208,9 @@ namespace MRenderer
 
             PlacedAllocation Allocate(AllocationDesc desc);
             void Free(PlacedAllocation& allocation);
-            void AliasFree(PlacedAllocation& allocation);
+            void ReleasePlacedMemory(PlacedAllocation& allocation);
+            void ResetPlacedMemory();
+            inline ID3D12Device* Device() { return mDevice; }
 
             inline uint32 MaxResourceSize() const { return DeviceHeapPageSize; }
 
@@ -214,36 +218,168 @@ namespace MRenderer
             static uint32 HeapIndex(D3D12_HEAP_TYPE heap_type, D3D12_HEAP_FLAGS heap_flag);
 
         protected:
-            std::vector<HeapMemoryAllocator> mHeaps;
+            std::vector<std::unique_ptr<HeapMemoryAllocator>> mHeaps;
             ID3D12Device* mDevice;
         };
 
-        class MemoryAllocator
+        //d3d12 resource allocator, resource could be allocaated as commited resource or placed resource, depends on @AllocationPolicy.
+
+        class ID3D12MemoryAllocator 
         {
         public:
+            virtual ~ID3D12MemoryAllocator() = default;
+
+            virtual MemoryAllocation* Allocate(AllocationDesc desc) = 0;
+            virtual void Free(MemoryAllocation*& allocation) = 0;
+        };
+
+        class ID3D12TransientMemoryAllocator 
+        {
+        public:
+            virtual void ReleasePlacedMemory(MemoryAllocation* allocation) = 0;
+            virtual void ResetPlacedMemory() = 0;
+        };
+
+        class D3D12MemoryAllocator : public ID3D12MemoryAllocator
+        {
             static constexpr int InvalidPlacedHeapIndex = -1;
 
         public:
-            MemoryAllocator(ID3D12Device* device);
-            ~MemoryAllocator();
-            MemoryAllocator(const MemoryAllocator&) = delete;
-            MemoryAllocator& operator=(const MemoryAllocator&) = delete;
+            D3D12MemoryAllocator(ID3D12Device* device)
+                : mDevice(device), mHeapAllocator(device)
+            {
+            }
+            ~D3D12MemoryAllocator() = default;
 
-            MemoryAllocation* Allocate(AllocationDesc desc);
-            void Free(MemoryAllocation*& allocation);
+            D3D12MemoryAllocator(const D3D12MemoryAllocator&) = delete;
+            D3D12MemoryAllocator& operator=(const D3D12MemoryAllocator&) = delete;
+
+            MemoryAllocation* Allocate(AllocationDesc desc) override
+            {
+                MemoryAllocation* ret = mAllocationAllocator.Allocate();
+                if (desc.prefer_commited)
+                {
+                    ret->Allocation = AllocateCommitedResouce(mDevice, desc);
+                }
+                else
+                {
+                    PlacedAllocation placed_allocation = mHeapAllocator.Allocate(desc);
+                    if (placed_allocation.Valid())
+                    {
+                        ret->Allocation = placed_allocation;
+                    }
+                    else
+                    {
+                        ret->Allocation = AllocateCommitedResouce(mHeapAllocator.Device(), desc);
+                    }
+                }
+
+                ret->Source = this;
+                return ret;
+            }
+
+            void Free(MemoryAllocation*& allocation) override
+            {
+                Overload overloads
+                {
+                    [&](CommitedAllocation& allocation) {allocation.Resource->Release(); },
+                    [&](PlacedAllocation& allocation) {mHeapAllocator.Free(allocation); },
+                };
+
+                std::visit(overloads, allocation->Allocation);
+                mAllocationAllocator.Free(allocation);
+            }
 
         protected:
-            CommitedAllocation AllocateCommitedResouce(const AllocationDesc& desc);
+            CommitedAllocation AllocateCommitedResouce(ID3D12Device* device, const AllocationDesc& desc) 
+            {
+                ID3D12Resource* res;
+                auto heap_property = CD3DX12_HEAP_PROPERTIES(desc.heap_type);
+
+                bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+
+                ThrowIfFailed(device->CreateCommittedResource(
+                    &heap_property,
+                    D3D12_HEAP_FLAG_NONE,
+                    &desc.resource_desc,
+                    desc.initial_state,
+                    use_default_value ? &desc.defalut_value : nullptr,
+                    IID_PPV_ARGS(&res)
+                ));
+
+                CommitedAllocation allocation = {};
+                allocation.Resource = res;
+
+                return allocation;
+            }
 
         protected:
             MultiHeapMemoryAllocator mHeapAllocator;
             NestedObjectAllocator<MemoryAllocation> mAllocationAllocator;
             ID3D12Device* mDevice;
         };
+
+
+        // It contains all transient resources. They are allocated as placed resources and share the same memory if their lifetimes do not overlap.
+        class D3D12TransientMemoryAllocator : public ID3D12MemoryAllocator, public ID3D12TransientMemoryAllocator
+        {
+        public:
+            D3D12TransientMemoryAllocator(ID3D12Device* device)
+                :mHeapAllocator(device)
+            {
+            }
+            ~D3D12TransientMemoryAllocator() = default;
+
+            D3D12TransientMemoryAllocator(const D3D12TransientMemoryAllocator&) = delete;
+            D3D12TransientMemoryAllocator& operator=(const D3D12TransientMemoryAllocator&) = delete;
+
+            MemoryAllocation* Allocate(AllocationDesc desc) override 
+            {
+                PlacedAllocation placed_allocation = mHeapAllocator.Allocate(desc);
+                ASSERT(placed_allocation.Valid());
+
+                MemoryAllocation* ret = mAllocationAllocator.Allocate();
+                ret->Source = this;
+                ret->Allocation = placed_allocation;
+
+                return ret;
+            }
+            
+            void Free(MemoryAllocation*& allocation) override 
+            {
+                Overload overloads
+                {
+                    [&](CommitedAllocation& allocation) {ASSERT(false); },
+                    [&](PlacedAllocation& allocation) {mHeapAllocator.Free(allocation); },
+                };
+
+                std::visit(overloads, allocation->Allocation);
+                mAllocationAllocator.Free(allocation);
+            }
+
+            void ReleasePlacedMemory(MemoryAllocation* allocation) override
+            {
+                Overload overloads
+                {
+                    [&](CommitedAllocation& allocation) {ASSERT(false); },
+                    [&](PlacedAllocation& allocation) {mHeapAllocator.ReleasePlacedMemory(allocation); },
+                };
+
+                std::visit(overloads, allocation->Allocation);
+            }
+
+            void ResetPlacedMemory() override
+            {
+                mHeapAllocator.ResetPlacedMemory();
+            }
+
+        protected:
+            MultiHeapMemoryAllocator mHeapAllocator;
+            NestedObjectAllocator<MemoryAllocation> mAllocationAllocator;
+        };
     }
 
     using D3D12Memory::MemoryAllocation;
-    using D3D12Memory::MemoryAllocator;
 }
 
 

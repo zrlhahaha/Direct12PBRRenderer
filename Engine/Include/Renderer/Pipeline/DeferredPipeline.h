@@ -1,16 +1,39 @@
 #pragma once
-
+#include "Renderer/FrameGraph.h"
 #include "Renderer/Pipeline/IPipeline.h"
 #include "Renderer/Scene.h"
 #include "Renderer/Camera.h"
 
 namespace MRenderer 
 {
-    class PreFilterEnvMapPass : public IRenderPass
+    struct DeferredPipelineResource 
     {
-    public:
-        static constexpr std::string_view Output_PrefilterEnvMap = "PrefilterEnvMap";
+        // texture
+        inline static FGResourceId PrefilterEnvMap = FGResourceIDs::Instance()->NameToID("PrefilterEnvMap");
+        inline static FGResourceId PrecomputeBRDF = FGResourceIDs::Instance()->NameToID("PrecomputeBRDF");
 
+        inline static FGResourceId GBufferA = FGResourceIDs::Instance()->NameToID("GBufferA");
+        inline static FGResourceId GBufferB = FGResourceIDs::Instance()->NameToID("GBufferB");
+        inline static FGResourceId GBufferC = FGResourceIDs::Instance()->NameToID("GBufferC");
+        inline static FGResourceId DepthStencil = FGResourceIDs::Instance()->NameToID("GBufferDepthStencil");
+
+        inline static FGResourceId DeferredShadingRT = FGResourceIDs::Instance()->NameToID("DeferredShadingRT");
+        inline static FGResourceId BloomMipchain = FGResourceIDs::Instance()->NameToID("BloomMipchain");
+        inline static FGResourceId BloomTempTexture = FGResourceIDs::Instance()->NameToID("BloomTempTexture");
+
+        inline static FGResourceId ToneMappedTexture = FGResourceIDs::Instance()->NameToID("ToneMappedTexture");
+
+        // structured buffer
+        inline static FGResourceId FrustumCluster = FGResourceIDs::Instance()->NameToID("FrustumCluster");
+        inline static FGResourceId PointLights = FGResourceIDs::Instance()->NameToID("ClusteredLights");
+
+        inline static FGResourceId LuminanceHistogram = FGResourceIDs::Instance()->NameToID("LuminanceHistogram");
+        inline static FGResourceId AverageLuminance = FGResourceIDs::Instance()->NameToID("AverageLuminance");
+    };
+
+
+    class PreFilterEnvMapPass : public ComputePass
+    {
     public:
         static constexpr uint32 PreFilterEnvMapSize = 512;
         static constexpr uint32 PreFilterEnvMapMipsLevel = 5;
@@ -31,28 +54,23 @@ namespace MRenderer
         PreFilterEnvMapPass()
             :mReady(false)
         {
-            mPrefilterEnvMap = GD3D12Device->CreateTextureCube(PreFilterEnvMapSize, PreFilterEnvMapSize, PreFilterEnvMapMipsLevel, ETextureFormat_R16G16B16A16_FLOAT, true);
+            mPrefilterEnvMap = GD3D12ResourceAllocator->CreateTextureCube(PreFilterEnvMapSize, PreFilterEnvMapSize, PreFilterEnvMapMipsLevel, ETextureFormat_R16G16B16A16_FLOAT, true);
+
+            WritePersistentResource(DeferredPipelineResource::PrefilterEnvMap, mPrefilterEnvMap.get());
         }
 
-        void Connect()
-        {
-            WritePersistent(Output_PrefilterEnvMap, mPrefilterEnvMap.get());
-        }
-
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
+        void Execute(FGContext* context) override;
 
     protected:
         // each shading state is responsible for generating one mip level
         std::array<ShadingState, PreFilterEnvMapMipsLevel> mShadingState;
         std::shared_ptr<DeviceTexture2DArray> mPrefilterEnvMap;
+
         bool mReady;
     };
 
-    class PrecomputeBRDFPass : public IRenderPass
+    class PrecomputeBRDFPass : public ComputePass
     {
-    public:
-        static constexpr std::string_view Output_PrecomputeBRDF = "PrecomputeBRDF";
-
     protected:
         struct ConstantBuffer 
         {
@@ -64,18 +82,15 @@ namespace MRenderer
         PrecomputeBRDFPass()
             : mReady(false)
         {
-            mPrecomputeBRDF = GD3D12Device->CreateTexture2D(512, 512, 1, ETextureFormat_R16G16_FLOAT, ETexture2DFlag_AllowUnorderedAccess);
+            mPrecomputeBRDF = GD3D12ResourceAllocator->CreateTexture2D(512, 512, 1, ETextureFormat_R16G16_FLOAT, ETexture2DFlag_AllowUnorderedAccess);
+
+            WritePersistentResource(DeferredPipelineResource::PrecomputeBRDF, mPrecomputeBRDF.get());
 
             mShadingState.SetShader("precompute_brdf.hlsl", true);
             mShadingState.SetRWTexture("PrecomputeBRDF", mPrecomputeBRDF.get());
         }
 
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
-
-        void Connect()
-        {
-            WritePersistent("PrecomputeBRDF", mPrecomputeBRDF.get());
-        }
+        void Execute(FGContext* context) override;
 
     protected:
         ShadingState mShadingState;
@@ -83,17 +98,17 @@ namespace MRenderer
         bool mReady;
     };
 
-    class GBufferPass : public IRenderPass 
+    class GBufferPass : public GraphicsPass 
     {
     public:
-        static constexpr std::string_view Output_GBufferA = "GBufferA";
-        static constexpr std::string_view Output_GBufferB = "GBufferB";
-        static constexpr std::string_view Output_GBufferC = "GBufferC";
-
-    public:
         GBufferPass()
-            :IRenderPass(), mCullingStatus{}
+            :GraphicsPass(), mCullingStatus{}
         {
+            WriteTransientTexture(DeferredPipelineResource::GBufferA, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_R8G8B8A8_UNORM);
+            WriteTransientTexture(DeferredPipelineResource::GBufferB, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_R8G8B8A8_UNORM);
+            WriteTransientTexture(DeferredPipelineResource::GBufferC, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_R8G8B8A8_UNORM);
+            WriteTransientTexture(DeferredPipelineResource::DepthStencil, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_DepthStencil, ETexture2DFlag_AllowDepthStencil);
+
             mShadingState.SetShader("gbuffer.hlsl", false);
 
             // mark the stencil buffer where the object is rendered. This is for culling unused pixels when executing the draw screen command in @DeferredShadingPass.
@@ -111,15 +126,7 @@ namespace MRenderer
 
         inline const FrustumCullStatus& GetCullingStatus() const { return mCullingStatus; }
 
-        void Connect()
-        {
-            WriteRenderTarget(Output_GBufferA, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), ETextureFormat_R8G8B8A8_UNORM));
-            WriteRenderTarget(Output_GBufferB, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), ETextureFormat_FORMAT_R10G10B10A2_UNORM));
-            WriteRenderTarget(Output_GBufferC, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), ETextureFormat_R8G8B8A8_UNORM));
-            WriteDepthStencil(GD3D12Device->Width(), GD3D12Device->Height());
-        }
-
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
+        void Execute(FGContext* context) override;
 
         void DrawModel(D3D12CommandList* cmd, SceneModel* obj);
 
@@ -129,7 +136,7 @@ namespace MRenderer
         FrustumCullStatus mCullingStatus;
     };
 
-    class DeferredShadingPass : public IRenderPass 
+    class DeferredShadingPass : public GraphicsPass
     {
     public:
         struct DeferredShadingShader 
@@ -140,15 +147,28 @@ namespace MRenderer
             static constexpr std::string_view DepthStencil = "DepthStencil";
             static constexpr std::string_view PrefilterEnvMap = "PrefilterEnvMap";
             static constexpr std::string_view PrecomputeBRDF = "PrecomputeBRDF";
+            static constexpr std::string_view Clusters = "Clusters";
+            static constexpr std::string_view PointLights = "PointLights";
         };
 
-        static constexpr std::string_view Output_DeferredShadingRT = "DeferredShadingRT";
         static constexpr ETextureFormat DeferredShadingRTFormat = ETextureFormat_R16G16B16A16_FLOAT;
 
     public:
         DeferredShadingPass() 
-            :IRenderPass(), mGBufferA(nullptr), mGBufferB(nullptr), mGBufferC(nullptr), mDepthStencil(nullptr), mPrefilterEnvMap(nullptr), mPrecomputeBRDF(nullptr)
+            :GraphicsPass()
         {
+            ReadResource(DeferredPipelineResource::GBufferA);
+            ReadResource(DeferredPipelineResource::GBufferB);
+            ReadResource(DeferredPipelineResource::GBufferC);
+            ReadResource(DeferredPipelineResource::DepthStencil);
+            ReadResource(DeferredPipelineResource::PrefilterEnvMap);
+            ReadResource(DeferredPipelineResource::PrecomputeBRDF);
+            ReadResource(DeferredPipelineResource::PointLights);
+            ReadResource(DeferredPipelineResource::FrustumCluster);
+
+            WriteTransientTexture(DeferredPipelineResource::DeferredShadingRT, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_R16G16B16A16_FLOAT);
+            WriteResource(DeferredPipelineResource::DepthStencil); // just for stencil test, no writting here
+
             mShadingState.SetShader("deferred_shading.hlsl", false);
 
             // stencil ref is 0, the stencil value of undrawn areas is 0. We mask out all undrawn areas by testing [stencil_ref(0) < stencil_value]
@@ -159,67 +179,33 @@ namespace MRenderer
             mPipelineStateDesc.FrontFaceStencilDesc = mPipelineStateDesc.BackFaceStencilDesc = StencilTestDesc::Compare(ECompareFunction_Less);
         }
 
-        void Connect(GBufferPass* gbuffer_pass, PreFilterEnvMapPass* env_map_pass, PrecomputeBRDFPass* precompute_brdf_pass)
-        {
-            mGBufferA = SampleTexture(gbuffer_pass, GBufferPass::Output_GBufferA);
-            mGBufferB = SampleTexture(gbuffer_pass, GBufferPass::Output_GBufferB);
-            mGBufferC = SampleTexture(gbuffer_pass, GBufferPass::Output_GBufferC);
-            mDepthStencil = SampleTexture(gbuffer_pass->GetDepthStencil());
-            mPrefilterEnvMap = SampleTexture(env_map_pass, PreFilterEnvMapPass::Output_PrefilterEnvMap);
-            mPrecomputeBRDF = SampleTexture(precompute_brdf_pass, PrecomputeBRDFPass::Output_PrecomputeBRDF);
-
-            WriteRenderTarget(Output_DeferredShadingRT, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), DeferredShadingRTFormat));
-            WriteDepthStencil(gbuffer_pass->GetDepthStencil()); // not actually writting to it, just for enable stencil test
-        }
+    protected:
+        void Execute(FGContext* context) override;
 
     protected:
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
-
-    protected:
-        RenderPassNode* mGBufferA;
-        RenderPassNode* mGBufferB;
-        RenderPassNode* mGBufferC;
-        RenderPassNode* mDepthStencil;
-        RenderPassNode* mPrefilterEnvMap;
-        RenderPassNode* mPrecomputeBRDF;
-
         ShadingState mShadingState;
         PipelineStateDesc mPipelineStateDesc;
     };
 
-    class SkyboxPass : public IRenderPass 
+    class SkyboxPass : public GraphicsPass 
     {
     public:
-        static constexpr std::string_view Output_LuminanceTexture = DeferredShadingPass::Output_DeferredShadingRT;
-
         static constexpr EVertexFormat SkyBoxMeshFormat = EVertexFormat_P3F_N3F_T3F_C3F_T2F;
 
     public:
         SkyboxPass();
-
-        void Connect(GBufferPass* gbuffer_pass, DeferredShadingPass* shading_pass)
-        {
-            mShadingState.SetShader("skybox.hlsl", false);
-
-            WriteRenderTarget(Output_LuminanceTexture, shading_pass->FindOutput(DeferredShadingPass::Output_DeferredShadingRT));
-            WriteDepthStencil(gbuffer_pass->GetDepthStencil());
-        }
-
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
+        void Execute(FGContext* context) override;
 
     protected:
         std::shared_ptr<DeviceIndexBuffer> mBoxIndexBuffer;
         std::shared_ptr<DeviceVertexBuffer> mBoxVertexBuffer;
-        
+
         ShadingState mShadingState;
     };
 
-    class BloomPass : public IRenderPass
+    class BloomPass : public ComputePass
     {
     public:
-        static constexpr std::string_view Input_LuminanceTexture = SkyboxPass::Output_LuminanceTexture;
-        static constexpr std::string_view Output_LuminanceTeture = "BloomPassRT";
-
         static constexpr uint32 BloomStep = 3;
         static constexpr uint32 MipmapLevel = BloomStep + 2; // see BloomPass::Execute comment
         
@@ -296,33 +282,9 @@ namespace MRenderer
 
     public:
         BloomPass();
-
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
-        void Connect(SkyboxPass* skybox_pass)
-        {
-            mInputTexture = SampleTexture(skybox_pass, Input_LuminanceTexture);
-
-            if (!mTempTexture && !mMipchain)
-            {
-                uint32 width = mInputTexture->GetTextureFormatKey().Info.Width;
-                uint32 height = mInputTexture->GetTextureFormatKey().Info.Height;
-                ETextureFormat format = mInputTexture->GetTextureFormatKey().Info.Format;
-
-                ASSERT(BloomStep < CalculateMaxMipLevels(width, height));
-
-                mTempTexture = GD3D12Device->CreateTexture2D(int(width), int(height), MipmapLevel, format, ETexture2DFlag_AllowUnorderedAccess);
-                mMipchain = GD3D12Device->CreateTexture2D(int(width), int(height), MipmapLevel, format, ETexture2DFlag_AllowUnorderedAccess);
-            }
-
-            WritePersistent(Output_LuminanceTeture, mMipchain.get());
-        }
-
+        void Execute(FGContext* context) override;
 
     protected:
-        RenderPassNode* mInputTexture;
-        std::shared_ptr<DeviceTexture2D> mOutput; // the final texture
-        std::shared_ptr<DeviceTexture2D> mTempTexture; // intermidate texture for horizontal and vertical guassian blur
-        std::shared_ptr<DeviceTexture2D> mMipchain; // downsample mipchain
         ShadingState mDownsampleH[BloomStep];
         ShadingState mDownsampleV[BloomStep];
         ShadingState mUpsampleH[BloomStep];
@@ -333,13 +295,36 @@ namespace MRenderer
         ShadingState mPrefilter;
     };
 
-    class ClusteredPass : public IRenderPass
+    class ClusteredPass : public ComputePass
     {
-    public:
+    protected:
+        struct ClusteredShaderConstant
+        {
+            int NumLight;
+        };
+
+        struct ClusteredComputeShader
+        {
+            static constexpr std::string_view ShaderFile = "clustered_compute.hlsl";
+
+            using ShaderConstant = ClusteredShaderConstant;
+            static constexpr std::string_view Clusters = "Clusters";
+        };
+
+        struct ClusteredCullingShader
+        {
+            static constexpr std::string_view ShaderFile = "clustered_culling.hlsl";
+
+            using ShaderConstant = ClusteredShaderConstant;
+            static constexpr std::string_view Clusters = "Clusters";
+            static constexpr std::string_view PointLights = "PointLights";
+        };
+
         static constexpr int32 ClusterSizeX = 24;
         static constexpr int32 ClusterSizeY = 16;
         static constexpr int32 ClusterSizeZ = 9;
-        static constexpr int32 NumLights = 256;
+        static constexpr int32 MaxSceneLights = 1024;
+        static constexpr int32 MaxClusterLights = 128;
 
         // make sure the defination of @Cluster is same as compute shader
         struct alignas(4) Cluster
@@ -348,7 +333,7 @@ namespace MRenderer
             float Padding;
             Vector3 MaxBound;
             int NumLights;
-            int LightIndex[32];
+            int LightIndex[MaxClusterLights];
         };
 
         struct alignas(4) PointLight
@@ -359,34 +344,35 @@ namespace MRenderer
             float Intensity;
         };
 
-        struct ShaderConstant
-        {
-            int ClusterX;
-            int ClusterY;
-            int ClusterZ;
-            int NumLight;
-        };
-
     public:
-        ClusteredPass();
+        ClusteredPass()
+        {
+            // allocate structured buffer
+            uint32 cluster_size = ClusterSizeX * ClusterSizeY * ClusterSizeZ * sizeof(Cluster);
+            uint32 point_light_size = MaxSceneLights * sizeof(PointLight);
 
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
+            WriteTransientBuffer(DeferredPipelineResource::FrustumCluster, cluster_size, sizeof(Cluster));
+            WriteTransientBuffer(DeferredPipelineResource::PointLights, point_light_size, sizeof(PointLight));
+
+            // prepare shader
+            mClusteredCompute.SetShader(ClusteredComputeShader::ShaderFile, true);
+            mClusteredCulling.SetShader(ClusteredCullingShader::ShaderFile, true);
+        }
+
+        void Execute(FGContext* context) override;
 
     protected:
-        ShadingState mClusterCompute;
-        ShadingState mClusterCulling;
-        std::shared_ptr<DeviceStructuredBuffer> mStructuredBufferCluster;
-        std::shared_ptr<DeviceStructuredBuffer> mStructuredBufferPointLight;
-        bool mClusterReady; // has the cluster data been computed
+        ShadingState mClusteredCompute;
+        ShadingState mClusteredCulling;
     };
 
-    class ToneMappingPass : public IRenderPass
+    class AutoExposurePass : public ComputePass 
     {
     protected:
-        struct LuminanceHistogramShader 
+        struct LuminanceHistogramShader
         {
         public:
-            struct ConstantBuffer 
+            struct ConstantBuffer
             {
                 uint32 TextureWidth;
                 uint32 TextureHeight;
@@ -394,11 +380,12 @@ namespace MRenderer
                 float InvLogLuminanceRange;
             };
 
+            static constexpr std::string_view ShaderFile = "hdr_luminance_histogram.hlsl";
             static constexpr std::string_view LuminanceTexture = "LuminanceTexture";
             static constexpr std::string_view LuminanceHistogram = "LuminanceHistogram";
         };
 
-        struct AverageLuminanceShader 
+        struct AverageLuminanceShader
         {
             struct ConstantBuffer
             {
@@ -406,16 +393,11 @@ namespace MRenderer
                 float MinLogLuminance;
                 float LogLuminanceRange;
             };
-        
+
+            static constexpr std::string_view ShaderFile = "hdr_average_histogram.hlsl";
             static constexpr std::string_view LuminanceHistogram = "LuminanceHistogram";
             static constexpr std::string_view AverageLuminance = "AverageLuminance";
         };
-
-        struct ToneMappingShader 
-        {
-            static constexpr std::string_view AverageLuminance = "AverageLuminance";
-        };
-
 
         static constexpr float MinLogLuminance = -10.0f;
         static constexpr float MaxLogLuminance = 2.0f;
@@ -423,56 +405,57 @@ namespace MRenderer
         static constexpr float InvLogLuminanceRange = 1.0f / (MaxLogLuminance - MinLogLuminance);
         static constexpr uint32 HistogramComputeThreadGroupSize = 16;
         static constexpr uint32 HistogramBinSize = 256;
-
     public:
-        static constexpr std::string_view Output_ToneMappingRT = "LuminanceTexture";
+        AutoExposurePass()
+            : mAvarageLuminanceInitialized(false)
+        {
+            ReadResource(DeferredPipelineResource::DeferredShadingRT);
+            WriteTransientBuffer(DeferredPipelineResource::LuminanceHistogram, HistogramBinSize * sizeof(uint32), sizeof(uint32));
+            WriteTransientBuffer(DeferredPipelineResource::AverageLuminance, 1 * sizeof(float), sizeof(float));
+
+            mLuminanceHistogramCompute.SetShader(LuminanceHistogramShader::ShaderFile, true);
+            mAvarageLuminanceCompute.SetShader(AverageLuminanceShader::ShaderFile, true);
+        }
+
+        void Execute(FGContext* context) override;
+
+    protected:
+        ShadingState mLuminanceHistogramCompute;
+        ShadingState mAvarageLuminanceCompute;
+
+        bool mAvarageLuminanceInitialized;
+    };
+
+    class ToneMappingPass : public GraphicsPass
+    {
+    protected:
+        struct ToneMappingShader 
+        {
+            static constexpr std::string_view AverageLuminance = "AverageLuminance";
+            static constexpr std::string_view LuminanceTexture = "LuminanceTexture";
+        };
 
     public:
         ToneMappingPass()
-            : mLuminanceTexture(nullptr)
+            : mAvarageLuminanceInitialized(false)
         {
-            mLuminanceHistogram = GD3D12Device->CreateStructuredBuffer(HistogramBinSize * sizeof(uint32), sizeof(uint32));
-            mLuminanceHistogram->Resource()->SetName(L"LuminanceHistogram");
+            ReadResource(DeferredPipelineResource::DeferredShadingRT);
+            ReadResource(DeferredPipelineResource::AverageLuminance);
+            WriteTransientTexture(DeferredPipelineResource::ToneMappedTexture, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_R8G8B8A8_UNORM);
 
-            float initial_avg_luminance = 0;
-            mAverageLuminance = GD3D12Device->CreateStructuredBuffer(1 * sizeof(float), sizeof(float), &initial_avg_luminance);
-            mAverageLuminance->Resource()->SetName(L"AverageLuminance");
+            mLuminanceHistogramCompute.SetShader("hdr_luminance_histogram.hlsl", true);
+            mAvarageLuminanceCompute.SetShader("hdr_average_histogram.hlsl", true);
+            mToneMappingRender.SetShader("hdr_tone_mapping.hlsl", false);
         }
 
-        void Connect(BloomPass* bloom_pass);
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
+        void Execute(FGContext* context) override;
 
     protected:
-        RenderPassNode* mLuminanceTexture;
-
-        std::shared_ptr<DeviceStructuredBuffer> mLuminanceHistogram;
-        std::shared_ptr<DeviceStructuredBuffer> mAverageLuminance;
-
         ShadingState mLuminanceHistogramCompute;
         ShadingState mAvarageLuminanceCompute;
         ShadingState mToneMappingRender;
-    };
 
-    class PresentPass : public IRenderPass
-    {
-    public:
-        static constexpr std::string_view Input_FinalTexture = "InputTexture";
-
-    public:
-        PresentPass() 
-            :mInputTexture(nullptr)
-        {
-        }
-
-        void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera) override;
-
-        void Connect(RenderPassNode* node)
-        {
-            mInputTexture = SampleTexture(node);
-        }
-
-    protected:
-        RenderPassNode* mInputTexture;
+        bool mAvarageLuminanceInitialized;
     };
 
     class DeferredRenderPipeline : public IRenderPipeline
@@ -480,7 +463,7 @@ namespace MRenderer
     public:
         DeferredRenderPipeline();
 
-        void Setup() override;
+        std::vector<IRenderPass*> Setup() override;
         FrustumCullStatus GetStatus() const override { return mGBufferPass->GetCullingStatus(); }
 
     public:
@@ -490,7 +473,8 @@ namespace MRenderer
         std::unique_ptr<BloomPass> mBloomPass;
         std::unique_ptr<PreFilterEnvMapPass> mPrefilterEnvMapPass;
         std::unique_ptr<PrecomputeBRDFPass> mPrecomputeBRDFPass;
+        std::unique_ptr<AutoExposurePass> mAutoExposurePass;
         std::unique_ptr<ToneMappingPass> mToneMappingPass;
-        std::unique_ptr<PresentPass> mPresentPass;
+        std::unique_ptr<ClusteredPass> mClusteredPass;
     };
 }

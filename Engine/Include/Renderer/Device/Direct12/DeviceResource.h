@@ -1,11 +1,13 @@
 #pragma once
 #include <array>
-#include "MemoryAllocator.h"
 #include "DescriptorAllocator.h"
 #include "Resource/BasicStorage.h"
 
 namespace MRenderer
 {
+    struct D3D12Memory::MemoryAllocation;
+    class D3D12ResourceAllocator;
+
     // same as D3D12_FILTER
     enum ESamplerFilter : uint8
     {
@@ -35,21 +37,22 @@ namespace MRenderer
     // for d3d12 resource RAII management, state tracking and keeping mapped pointer
     class D3D12Resource
     {
+        friend class D3D12ResourceAllocator;
     public:
         D3D12Resource()
-            :mAllocation(nullptr), mResource(nullptr), mResourceState(D3D12_RESOURCE_STATE_COMMON), mMapped(0)
+            :mSource(nullptr), mAllocation(nullptr), mResource(nullptr), mResourceState(D3D12_RESOURCE_STATE_COMMON), mMapped(0)
         {
         }
 
         // for back buffer, @D3D12Resource won't interfere with the resource life cycle
         D3D12Resource(ID3D12Resource* allocation, D3D12_RESOURCE_STATES state, uint8* mapped = nullptr)
-            :mAllocation(nullptr), mResource(allocation), mResourceState(state), mMapped(mapped)
+            :mSource(nullptr), mAllocation(nullptr), mResource(allocation), mResourceState(state), mMapped(mapped)
         {
         }
 
         // fow our own resource allocation, @D3D12Resource will manage it's life cycle by RAII
-        D3D12Resource(D3D12Memory::MemoryAllocation* allocation, D3D12_RESOURCE_STATES state, uint8* mapped = nullptr)
-            :mAllocation(allocation), mResource(allocation->Resource()), mResourceState(state), mMapped(mapped)
+        D3D12Resource(D3D12Memory::MemoryAllocation* allocation, D3D12ResourceAllocator* source, D3D12_RESOURCE_STATES state, uint8* mapped = nullptr)
+            :mSource(source), mAllocation(allocation), mResource(allocation->Resource()), mResourceState(state), mMapped(mapped)
         {
         }
 
@@ -59,25 +62,10 @@ namespace MRenderer
 
         D3D12Resource& operator=(D3D12Resource&& other);
 
-        inline ID3D12Resource* Resource() const
-        {
-            return mResource;
-        }
-
-        inline ETextureFormat Format() const
-        {
-            return static_cast<ETextureFormat>(Resource()->GetDesc().Format);
-        }
-
-        inline D3D12_RESOURCE_STATES ResourceState() const
-        {
-            return mResourceState;
-        }
-
-        inline void* GetMappedPtr() 
-        {
-            return mMapped;
-        }
+        inline ID3D12Resource* Resource() const { return mResource; }
+        inline ETextureFormat Format() const { return static_cast<ETextureFormat>(Resource()->GetDesc().Format); }
+        inline D3D12_RESOURCE_STATES ResourceState() const { return mResourceState; }
+        inline void* GetMappedPtr() { return mMapped; }
 
         void SetName(std::wstring_view name)
         {
@@ -87,15 +75,26 @@ namespace MRenderer
 
         void TransitionBarrier(ID3D12GraphicsCommandList* command_list, D3D12_RESOURCE_STATES state);
 
-        friend void Swap(D3D12Resource& lhs, D3D12Resource& rhs)
+        void ReleasePlacedMemory() 
         {
-            std::swap(lhs.mResource, rhs.mResource);
-            std::swap(lhs.mResourceState, rhs.mResourceState);
-            std::swap(lhs.mMapped, rhs.mMapped);
-            std::swap(lhs.mAllocation, rhs.mAllocation);
+            D3D12Memory::ID3D12TransientMemoryAllocator* allocator = dynamic_cast<D3D12Memory::ID3D12TransientMemoryAllocator*>(mAllocation->Allocator());
+            ASSERT(allocator);
+            
+            allocator->ReleasePlacedMemory(mAllocation);
+        }
+
+        friend void swap(D3D12Resource& lhs, D3D12Resource& rhs)
+        {
+            using std::swap;
+            swap(lhs.mSource, rhs.mSource);
+            swap(lhs.mResource, rhs.mResource);
+            swap(lhs.mResourceState, rhs.mResourceState);
+            swap(lhs.mMapped, rhs.mMapped);
+            swap(lhs.mAllocation, rhs.mAllocation);
         }
 
     protected:
+        D3D12ResourceAllocator* mSource;
         MemoryAllocation* mAllocation;
         ID3D12Resource* mResource;
         D3D12_RESOURCE_STATES mResourceState;
@@ -125,12 +124,12 @@ namespace MRenderer
         ResourceView(ResourceView&& other)
             :ResourceView()
         {
-            Swap(*this, other);
+            swap(*this, other);
         }
         
         ResourceView& operator=(ResourceView other) 
         {
-            Swap(*this, other);
+            swap(*this, other);
             return *this;
         }
 
@@ -138,10 +137,10 @@ namespace MRenderer
         inline CPUDescriptor* Descriptor() { return &mDescriptor; }
         bool Empty() const { return mResource == nullptr; }
 
-        friend void Swap(ResourceView& lhs, ResourceView& rhs) 
+        friend void swap(ResourceView& lhs, ResourceView& rhs) 
         {
             std::swap(lhs.mResource, rhs.mResource);
-            Swap(lhs.mDescriptor, rhs.mDescriptor);
+            swap(lhs.mDescriptor, rhs.mDescriptor);
         }
 
     protected:
@@ -221,9 +220,18 @@ namespace MRenderer
 
     class IDeviceResource
     {
-
     public:
         virtual ~IDeviceResource() {};
+        inline D3D12Resource* Resource() { return mResource; }
+
+    protected:
+        IDeviceResource(D3D12Resource* resource) 
+            :mResource(resource)
+        {
+        }
+
+    protected:
+        D3D12Resource* mResource;
     };
 
     // base class of texture2d, texture2d array and render target
@@ -232,10 +240,10 @@ namespace MRenderer
     {
     protected:
         DeviceTexture(D3D12Resource resource)
-            :mTextureResource(std::move(resource))
+            :IDeviceResource(&mTextureResource), mTextureResource(std::move(resource))
         {
             const auto& desc = mTextureResource.Resource()->GetDesc();
-
+            mResource = &mTextureResource;
             mWidth = static_cast<uint32>(desc.Width);
             mHeight = static_cast<uint32>(desc.Height);
             mDepth = static_cast<uint32>(desc.DepthOrArraySize);
@@ -250,7 +258,6 @@ namespace MRenderer
         inline void SetShaderResourceView(ShaderResourceView view) { mShaderResourceView = std::move(view); }
         inline ShaderResourceView* GetShaderResourceView() { ASSERT(!mShaderResourceView.Empty()); return &mShaderResourceView; }
 
-        inline D3D12Resource* Resource() { return &mTextureResource; }
         inline const ETextureFormat Format() const { return mTextureFormat; }
         inline uint32 Width() const { return mWidth; }
         inline uint32 Height() const { return mHeight; }
@@ -267,8 +274,8 @@ namespace MRenderer
     class DeviceTexture2D : public DeviceTexture
     {
     public:
-        DeviceTexture2D(D3D12Resource resource) 
-            : DeviceTexture(std::move(resource)), mMipSliceSRV(MipLevels())
+        DeviceTexture2D(D3D12Resource resource, ETexture2DFlag flag) 
+            : DeviceTexture(std::move(resource)), mMipSliceSRV(MipLevels()), mTextureFlag(flag)
         {
         }
         DeviceTexture2D(DeviceTexture2D&& other) = default;
@@ -295,6 +302,7 @@ namespace MRenderer
             mMipSliceUAV[index] = std::move(uav); 
         };
 
+        inline const ETexture2DFlag TextureFlag() const { return mTextureFlag; }
 
     protected:
         std::vector<UnorderAccessView> mMipSliceUAV; // mip slice uav
@@ -302,6 +310,8 @@ namespace MRenderer
         UnorderAccessView mUnorderedAccessView;
         RenderTargetView mRenderTargetView;
         DepthStencilView mDepthStencilView;
+
+        ETexture2DFlag mTextureFlag;
     };
 
     class DeviceTexture2DArray : public DeviceTexture
@@ -323,12 +333,11 @@ namespace MRenderer
     {
     public:
         DeviceStructuredBuffer(D3D12Resource resource) 
-            :mBuffer(std::move(resource))
+            :IDeviceResource(&mBuffer), mBuffer(std::move(resource))
         {
         }
         DeviceStructuredBuffer(DeviceStructuredBuffer&& other) = default;
 
-        inline D3D12Resource* Resource() { return &mBuffer; }
         inline ShaderResourceView* GetShaderResourceView() { ASSERT(!mShaderResourceView.Empty()); return &mShaderResourceView; }
         inline UnorderAccessView* GetUnorderedAccessView() { ASSERT(!mUnorderedResourceView.Empty()); return &mUnorderedResourceView; }
         inline void SetShaderResourceView(ShaderResourceView view) { mShaderResourceView = std::move(view); }
@@ -347,7 +356,7 @@ namespace MRenderer
     {
     public:
         DeviceVertexBuffer(D3D12Resource resource, D3D12_VERTEX_BUFFER_VIEW vbv)
-            :mVertexBuffer(std::move(resource)), mView(vbv)
+            :IDeviceResource(&mVertexBuffer), mVertexBuffer(std::move(resource)), mView(vbv)
         {
         }
         DeviceVertexBuffer(DeviceVertexBuffer&& other) = default;
@@ -377,7 +386,7 @@ namespace MRenderer
     {
     public:
         DeviceIndexBuffer(D3D12Resource resource, D3D12_INDEX_BUFFER_VIEW ibv)
-            :mIndexBuffer(std::move(resource)), mView(ibv)
+            :IDeviceResource(&mIndexBuffer), mIndexBuffer(std::move(resource)), mView(ibv)
         {
         }
         DeviceIndexBuffer(DeviceIndexBuffer&& other) = default;
@@ -403,14 +412,15 @@ namespace MRenderer
     {
     public:
         DeviceConstantBuffer(std::array<D3D12Resource, FrameResourceCount> resource_array, uint32 buffer_size)
-            :mBufferArray(std::move(resource_array)), mBufferSize(buffer_size)
+            :IDeviceResource(&mBufferArray[0]), mBufferArray(std::move(resource_array)), mBufferSize(buffer_size)
         {
         }
         DeviceConstantBuffer(DeviceConstantBuffer&& other) = default;
 
-        inline D3D12Resource* Resource(uint32 index) { return &mBufferArray[index]; }
         inline D3D12Resource* GetCurrentResource();
         ConstantBufferView* GetCurrendConstantBufferView();
+        inline D3D12Resource* IndexConstantBuffer(uint32 index) { return &mBufferArray[index]; }
+
         void SetConstantBufferView(std::array<ConstantBufferView, FrameResourceCount> view_array);
         inline uint32 BufferSize() const{ return mBufferSize;}
 
@@ -432,7 +442,7 @@ namespace MRenderer
     {
     public:
         DeviceSampler(CPUDescriptor cpu_descriptor)
-            :mCPUDescriptor(std::move(cpu_descriptor))
+            :IDeviceResource(nullptr), mCPUDescriptor(std::move(cpu_descriptor))
         {
 
         }
@@ -653,7 +663,7 @@ namespace MRenderer
 
     static_assert(sizeof(PipelineStateDesc) == 8);
 
-    struct RenderPassStateDesc 
+    struct GraphicsPassPsoDesc 
     {
         // formate of depth stencil
         ETextureFormat DepthStencilFormat;
@@ -662,10 +672,10 @@ namespace MRenderer
         uint8 NumRenderTarget;
 
         // format of render targets
-        ETextureFormat RenderTargetFormats[MaxRenderTargets];
+        std::array<ETextureFormat, MaxRenderTargets> RenderTargetFormats;
     };
 
-    static_assert(sizeof(RenderPassStateDesc) == 10);
+    static_assert(sizeof(GraphicsPassPsoDesc) == 10);
 
     struct ResourceBinding 
     {
@@ -676,4 +686,4 @@ namespace MRenderer
         std::array<UnorderAccessView*, ShaderResourceMaxUAV> UAVs = {};
     }; 
 
-    }
+}

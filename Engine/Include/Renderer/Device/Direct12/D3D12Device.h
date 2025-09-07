@@ -13,10 +13,11 @@ namespace MRenderer
 {
     class D3D12Device;
     class D3D12CommandList;
-
+    class D3D12ResourceAllocator;
 
     extern ID3D12Device* GD3D12RawDevice;
     extern D3D12Device* GD3D12Device;
+    extern D3D12ResourceAllocator* GD3D12ResourceAllocator;
 
 
     class PipelineStateObject 
@@ -147,6 +148,61 @@ namespace MRenderer
         uint32 mNumHeaps;
     };
 
+    class D3D12ResourceAllocator 
+    {
+    public:
+        static constexpr DXGI_FORMAT DepthStencilFormat = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+        static constexpr DXGI_FORMAT DepthStencilSRVFormat = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+
+    public:
+        D3D12ResourceAllocator(ID3D12Device* device, std::unique_ptr<D3D12Memory::ID3D12MemoryAllocator> allocator);
+        D3D12ResourceAllocator(const D3D12ResourceAllocator&) = delete;
+        D3D12ResourceAllocator& operator=(const D3D12ResourceAllocator&) = delete;
+
+        std::shared_ptr<DeviceVertexBuffer> CreateVertexBuffer(const void* data, uint32 count, uint32 stride);
+        std::shared_ptr<DeviceIndexBuffer> CreateIndexBuffer(const void* data, uint32 data_size);
+        std::shared_ptr<DeviceStructuredBuffer> CreateStructuredBuffer(uint32 data_size, uint32 stride, const void* initial_data = nullptr);
+        std::shared_ptr<DeviceTexture2D> CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, ETexture2DFlag flag, uint32 mip_chain_mem_size = 0, const void* mip_chain = nullptr);
+        std::shared_ptr<DeviceTexture2DArray> CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access = false, uint32 mip_chain_mem_size = 0, const std::array<const void*, NumCubeMapFaces>* mip_chains = nullptr);
+        std::shared_ptr<DeviceConstantBuffer> CreateConstBuffer(uint32 size);
+        D3D12Resource CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/);
+        std::shared_ptr<DeviceSampler> CreateSampler(ESamplerFilter filter_mode, ESamplerAddressMode address_mode);
+
+        // commit data from cpu memory to the default heap, use Map to commit data instead if the @resource is allocated on the upload heap
+        void CommitBuffer(D3D12Resource* resource, const void* data, uint32 size);
+
+        ShaderResourceView CreateShaderResourceView(const D3D12_SHADER_RESOURCE_VIEW_DESC* desc, D3D12Resource* resource);
+        UnorderAccessView CreateUnorderedAccessView(const D3D12_UNORDERED_ACCESS_VIEW_DESC* desc, D3D12Resource* resource);
+        RenderTargetView CreateRenderTargetView(const D3D12_RENDER_TARGET_VIEW_DESC* desc, D3D12Resource* resource);
+        DepthStencilView CreateDepthStencilView(const D3D12_DEPTH_STENCIL_VIEW_DESC* desc, D3D12Resource* resource);
+        ConstantBufferView CreateConstantBufferView(const D3D12_CONSTANT_BUFFER_VIEW_DESC* desc, D3D12Resource* resource);
+
+        void FlushCommandList(ID3D12CommandQueue* cmd_queue);
+        void NextFrame();
+        void ReleaseResource(MemoryAllocation* res);
+        void ResetPlacedMemory();
+
+    protected:
+        // copy texture subresource from cpu side to gpu side
+        void CommitTextureSubresource(DeviceTexture* dest, uint32 array_slice, uint32 mip_chain_mem_size, const void* mip_chain);
+
+    protected:
+        // device and command list
+        ID3D12Device* mDevice;
+        ComPtr<ID3D12CommandAllocator> mResourceCommandAllocator[FrameResourceCount];
+        ComPtr<ID3D12GraphicsCommandList> mResourceCommandList[FrameResourceCount];
+
+        // memory, descriptor allocator
+        std::unique_ptr<D3D12Memory::ID3D12MemoryAllocator> mMemoryAllocator;
+        std::unique_ptr<UploadBufferAllocator> mUploadBufferAllocator;
+        std::unique_ptr<CPUDescriptorAllocator> mCPUDescriptorAllocator;
+
+        // resources wait to be released
+        std::array<std::vector<MemoryAllocation*>, FrameResourceCount> mResourceCache;
+        uint32 mFrameIndex;
+    };
+
+
     class D3D12Device
     {
     public:
@@ -159,7 +215,6 @@ namespace MRenderer
 
         void LogAdapters();
 
-         
     public:
         inline uint32 Width() const { return mWidth;}
         inline uint32 Height() const { return mHeight;}
@@ -169,42 +224,21 @@ namespace MRenderer
         inline UnorderAccessView& GetNullUAV() { return mNullUAV; }
         inline RenderTargetView& GetNullRTV() { return mNullRTV; }
 
-        std::shared_ptr<DeviceVertexBuffer> CreateVertexBuffer(const void* data, uint32 count, uint32 stride);
-        std::shared_ptr<DeviceIndexBuffer> CreateIndexBuffer(const void* data, uint32 data_size);
-        std::shared_ptr<DeviceStructuredBuffer> CreateStructuredBuffer(uint32 data_size, uint32 stride, const void* initial_data=nullptr);
-        std::shared_ptr<DeviceTexture2D> CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, ETexture2DFlag flag, uint32 mip_chain_mem_size=0, const void* mip_chain=nullptr);
-        std::shared_ptr<DeviceTexture2DArray> CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access=false, uint32 mip_chain_mem_size=0, const std::array<const void*, NumCubeMapFaces>* mip_chains=nullptr);
-        std::shared_ptr<DeviceConstantBuffer> CreateConstBuffer(uint32 size);
-        std::shared_ptr<DeviceSampler> CreateSampler(ESamplerFilter filter_mode, ESamplerAddressMode address_mode);
-        std::shared_ptr<PipelineStateObject> CreateGraphicsPipelineStateObject(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program);
+        std::shared_ptr<PipelineStateObject> CreateGraphicsPipelineStateObject(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const GraphicsPassPsoDesc* pass_desc, const D3D12ShaderProgram* program);
         std::shared_ptr<PipelineStateObject> CreateComputePipelineStateObject(const D3D12ShaderProgram* program);
-        
-        // copy texture subresource from cpu side to gpu side
-        void CommitTextureSubresource(DeviceTexture* dest, uint32 array_slice, uint32 mip_chain_mem_size, const void* mip_chain);
-        
-        // commit data from cpu memory to the default heap, use Map to commit data instead if the @resource is allocated on the upload heap
-        void CommitBuffer(D3D12Resource* resource, const void* data, uint32 size);
 
         ID3D12RootSignature* GetRootSignature();
         DeviceBackBuffer* GetCurrentBackBuffer();
         DeviceVertexBuffer* GetScreenMeshVertices();
         DeviceIndexBuffer* GetScreenMeshIndicies();
 
-        void ReleaseResource(MemoryAllocation* res);
-        
         void BeginFrame();
         void EndFrame(D3D12CommandList* render_command_list=nullptr);
 
     private:
         D3D12Resource CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/);
         ID3D12RootSignature* CreateRootSignature() const;
-        ShaderResourceView CreateShaderResourceView(const D3D12_SHADER_RESOURCE_VIEW_DESC* desc, D3D12Resource* resource);
-        UnorderAccessView CreateUnorderedAccessView(const D3D12_UNORDERED_ACCESS_VIEW_DESC* desc, D3D12Resource* resource);
-        RenderTargetView CreateRenderTargetView(const D3D12_RENDER_TARGET_VIEW_DESC* desc, D3D12Resource* resource);
-        DepthStencilView CreateDepthStencilView(const D3D12_DEPTH_STENCIL_VIEW_DESC* desc, D3D12Resource* resource);
-        ConstantBufferView CreateConstantBufferView(const D3D12_CONSTANT_BUFFER_VIEW_DESC* desc, D3D12Resource* resource);
 
-        void ClearResourceCache(uint32 frame_index);
         void LogAdapterOutputs(IDXGIAdapter* adapter);
         void LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format);
         void CheckFeatureSupport();
@@ -213,8 +247,6 @@ namespace MRenderer
 
     public:
         static constexpr DXGI_FORMAT BackBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-        static constexpr DXGI_FORMAT DepthStencilFormat = DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
-        static constexpr DXGI_FORMAT DepthStencilSRVFormat = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
 
     public:
         CD3DX12_VIEWPORT mViewport;
@@ -223,15 +255,11 @@ namespace MRenderer
     private:
         D3D12ShaderCompiler mCompiler;
 
-        std::unique_ptr<MemoryAllocator> mMemoryAllocator;
-        std::unique_ptr<UploadBufferAllocator> mUploadBufferAllocator;
-        std::unique_ptr<CPUDescriptorAllocator> mCPUDescriptorAllocator;
+        std::unique_ptr<D3D12ResourceAllocator> mResourceAllocator;
 
         ComPtr<ID3D12CommandQueue> mCommandQueue;
         ComPtr<ID3D12RootSignature> mRootSignature;
 
-        ComPtr<ID3D12CommandAllocator> mResourceCommandAllocator[FrameResourceCount];
-        ComPtr<ID3D12GraphicsCommandList> mResourceCommandList[FrameResourceCount];
         std::shared_ptr<DeviceBackBuffer> mBackBuffers[FrameResourceCount];
         std::shared_ptr<DeviceTexture2D> mDepthStencil;
 
@@ -247,9 +275,6 @@ namespace MRenderer
         ShaderResourceView mNullSRV;
         UnorderAccessView mNullUAV;
         RenderTargetView mNullRTV;
-
-        // resources wait to be released
-        std::array<std::vector<MemoryAllocation*>, FrameResourceCount> mResourceCache;
 
         HANDLE mFenceEvent;
         uint32 mFrameIndex;

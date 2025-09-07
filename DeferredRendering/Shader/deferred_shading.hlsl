@@ -1,12 +1,16 @@
 #include "global.hlsli"
 #include "brdf.hlsli"
+#include "clustered.hlsli"
 
 Texture2D GBufferA;
 Texture2D GBufferB;
 Texture2D GBufferC;
 Texture2D DepthStencil;
-TextureCube PrefilterEnvMap;
 Texture2D PrecomputeBRDF;
+TextureCube PrefilterEnvMap;
+
+StructuredBuffer<Cluster> Clusters;
+StructuredBuffer<PointLight> PointLights;
 
 struct PSInput
 {
@@ -72,7 +76,7 @@ float ViewSpaceDepth(float ndc_depth)
     return Near * Far / (Far - ndc_depth * (Far - Near));
 }
 
-float3 ViewSpacePosition(float3 camera_vec, float ndc_depth)
+float3 ReconstructWorldPosition(float3 camera_vec, float ndc_depth)
 {
     float depth = ViewSpaceDepth(ndc_depth);
     return CameraPos + camera_vec * depth / Near;
@@ -117,32 +121,56 @@ float4 ps_main(PSInput input) : SV_TARGET
     float3 normal_ws = unpack_normal(GBufferB.Sample(SamplerPointClamp, input.uv).rg);
 
     float depth_ndc = DepthStencil.Sample(SamplerLinearClamp, input.uv).r;
-    float3 position_ws = ViewSpacePosition(input.camera_vec, depth_ndc);
+    float3 position_ws = ReconstructWorldPosition(input.camera_vec, depth_ndc);
     float3 view_ws = normalize(CameraPos - position_ws);
     
     float roughness = mixed.x;
     float metallic = mixed.y;
     float ao = mixed.z;
-
+    
     // indirect light
     float3 env_diffuse = EnvironmentDiffuse(albedo, metallic, normal_ws);
     float3 env_specular = EnvironmentSpecular(normal_ws, normalize(CameraPos - position_ws), compute_F0(albedo, metallic), roughness);
 
-    float3 light_dir_ws = normalize(float3(1, 1, 1));
-    float3 light_color = float3(1, 1, 1);
+    // direct light
+    float3 dl_light_dir = normalize(float3(1, 1, 1));
     float3 light_luminance = float3(100, 100, 100);
 
-    // direct light
-    BRDFInput brdf_input;
-    brdf_input.Metallic = metallic;
-    brdf_input.Roughness = roughness;
-    brdf_input.Albedo = albedo;
-    brdf_input.Normal = normal_ws;
-    brdf_input.ViewDir = view_ws;
-    brdf_input.LightDir = light_dir_ws;
+    BRDFInput dl_brdf_input;
+    dl_brdf_input.Metallic = metallic;
+    dl_brdf_input.Roughness = roughness;
+    dl_brdf_input.Albedo = albedo;
+    dl_brdf_input.Normal = normal_ws;
+    dl_brdf_input.ViewDir = view_ws;
+    dl_brdf_input.LightDir = dl_light_dir;
 
-    float3 direct_luminance = brdf(brdf_input) * light_color * light_luminance * max(dot(normal_ws, light_dir_ws), 0.0);
+    float3 direct_luminance = brdf(dl_brdf_input) * light_luminance * max(dot(normal_ws, dl_light_dir), 0.0);
 
-    return float4(env_diffuse + env_specular, 1);
-    // return float4(max(dot(normal_ws.y, float3(0,1,0)), 0).xxx, 1);
+    // point light
+    float z_vs = ViewSpaceDepth(depth_ndc);
+    int cluster_index = ClusterIndex(input.uv, z_vs);
+    float3 point_light_luminance = float3(0, 0, 0);
+
+    for(uint i = 0; i < Clusters[cluster_index].NumLights; i++)
+    {
+        PointLight light = PointLights[Clusters[cluster_index].LightIndex[i]];
+
+        float3 dir = normalize(light.Position - position_ws);
+        float distance = length(dir);
+
+        float irradiance = light.Intensity / distance / distance;
+
+        BRDFInput pl_brdf_input;
+        pl_brdf_input.Metallic = metallic;
+        pl_brdf_input.Roughness = roughness;
+        pl_brdf_input.Albedo = albedo;
+        pl_brdf_input.Normal = normal_ws;
+        pl_brdf_input.ViewDir = view_ws;
+        pl_brdf_input.LightDir = dir;
+
+        point_light_luminance += brdf(pl_brdf_input) * light.Color * irradiance;
+        point_light_luminance += float3(1.0,0.8,0.2) * 0.2;
+    }
+
+    return float4(env_diffuse + env_specular + point_light_luminance * 0.0001f, 1);
 }

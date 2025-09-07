@@ -66,12 +66,12 @@ namespace MRenderer
     BinaryData::BinaryData(BinaryData&& other)
         :BinaryData()
     {
-        Swap(*this, other);
+        swap(*this, other);
     }
 
     BinaryData& BinaryData::operator=(BinaryData other)
     {
-        Swap(*this, other);
+        swap(*this, other);
         return *this;
     }
 
@@ -92,24 +92,24 @@ namespace MRenderer
     MeshData::MeshData(MeshData&& rhs)
         :MeshData()
     {
-        Swap(*this, rhs);
+        swap(*this, rhs);
     }
 
     MeshData& MeshData::operator=(MeshData rhs)
     {
-        Swap(*this, rhs);
+        swap(*this, rhs);
         return *this;
     }
 
     TextureData::TextureData(TextureData&& other)
         :TextureData()
     {
-        Swap(*this, other);
+        swap(*this, other);
     }
 
     TextureData& TextureData::operator=(TextureData other)
     {
-        Swap(*this, other);
+        swap(*this, other);
         return *this;
     }
 

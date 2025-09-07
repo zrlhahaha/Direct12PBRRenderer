@@ -15,6 +15,7 @@ namespace MRenderer
 {
     ID3D12Device* GD3D12RawDevice = nullptr;
     D3D12Device* GD3D12Device = nullptr;
+    D3D12ResourceAllocator* GD3D12ResourceAllocator = nullptr;
 
     D3D12Device::D3D12Device(uint32 width, uint32 height)
         : mViewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
@@ -63,20 +64,16 @@ namespace MRenderer
         sd.Windowed = true;
         sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
         sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-        // Note: Swap chain uses queue to perform flush.
 
         ComPtr<IDXGISwapChain> swap_chain;
         ThrowIfFailed(mDxgiFactory->CreateSwapChain(mCommandQueue.Get(), &sd, &swap_chain));
         swap_chain.As<IDXGISwapChain3>(&mSwapChain);
 
+        // resource allocator
+        mResourceAllocator = std::make_unique<D3D12ResourceAllocator>(mDevice.Get(), std::make_unique<D3D12Memory::D3D12MemoryAllocator>(mDevice.Get()));
+
         // root signature
         mRootSignature = CreateRootSignature();
-
-        // resource allocator
-        mMemoryAllocator = std::make_unique<MemoryAllocator>(mDevice.Get());
-        mUploadBufferAllocator = std::make_unique<UploadBufferAllocator>(mDevice.Get());
-
-        mCPUDescriptorAllocator = std::make_unique<CPUDescriptorAllocator>(mDevice.Get());
 
         // frame resources
         mBackBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
@@ -89,18 +86,7 @@ namespace MRenderer
             mSwapChain->GetBuffer(i, IID_PPV_ARGS(&render_target));
             render_target->SetName((std::wstring(L"BackBuffer_") + std::to_wstring(mFrameIndex)).data());
             auto& resource = mBackBuffers[i] = std::make_unique<DeviceBackBuffer>(D3D12Resource(render_target, D3D12_RESOURCE_STATE_PRESENT, nullptr));
-            resource->SetRenderTargetView(CreateRenderTargetView(nullptr, resource->Resource()));
-
-            // create command list
-            ID3D12GraphicsCommandList* resource_command_list;
-            ID3D12CommandAllocator* resource_command_allocator;
-            ThrowIfFailed(mDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&resource_command_allocator)));
-            ThrowIfFailed(mDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, resource_command_allocator, nullptr, IID_PPV_ARGS(&resource_command_list)));
-
-            ThrowIfFailed(resource_command_list->Close());
-
-            mResourceCommandList[i] = resource_command_list;
-            mResourceCommandAllocator[i] = resource_command_allocator;
+            resource->SetRenderTargetView(mResourceAllocator->CreateRenderTargetView(nullptr, resource->Resource()));
         }
 
         // null descriptor
@@ -116,7 +102,7 @@ namespace MRenderer
                 .MipLevels = 1,
             }
         };
-        mNullSRV = CreateShaderResourceView(&srv_desc, &null_resource);
+        mNullSRV = mResourceAllocator->CreateShaderResourceView(&srv_desc, &null_resource);
 
         D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = 
         {
@@ -127,7 +113,7 @@ namespace MRenderer
                 .MipSlice = 0,
             }
         };
-        mNullUAV = CreateUnorderedAccessView(&uav_desc, &null_resource);
+        mNullUAV = mResourceAllocator->CreateUnorderedAccessView(&uav_desc, &null_resource);
 
         D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = 
         {
@@ -138,7 +124,7 @@ namespace MRenderer
                 .MipSlice = 0,
             }
         };
-        mNullRTV = CreateRenderTargetView(&rtv_desc, &null_resource);
+        mNullRTV = mResourceAllocator->CreateRenderTargetView(&rtv_desc, &null_resource);
 
         // windows event
         mFenceEvent = CreateEvent(nullptr, false, false, nullptr);
@@ -148,6 +134,7 @@ namespace MRenderer
 
         GD3D12RawDevice = mDevice.Get();
         GD3D12Device = this;
+        GD3D12ResourceAllocator = mResourceAllocator.get();
 
 #ifndef NDebug
         //LogAdapters();
@@ -188,8 +175,8 @@ namespace MRenderer
             0,1,2
         };
 
-        mScreenVertexBuffer = CreateVertexBuffer(screen_vertices, sizeof(screen_vertices), sizeof(Vertex<EVertexFormat_P3F_T2F>));
-        mScreenIndexBuffer = CreateIndexBuffer(screen_indicies, sizeof(screen_indicies));
+        mScreenVertexBuffer = mResourceAllocator->CreateVertexBuffer(screen_vertices, sizeof(screen_vertices), sizeof(Vertex<EVertexFormat_P3F_T2F>));
+        mScreenIndexBuffer = mResourceAllocator->CreateIndexBuffer(screen_indicies, sizeof(screen_indicies));
     }
 
     void D3D12Device::LogAdapters()
@@ -219,8 +206,29 @@ namespace MRenderer
             ReleaseCom(adapterList[i]);
         }
     }
-    
-    std::shared_ptr<DeviceVertexBuffer> D3D12Device::CreateVertexBuffer(const void* data, uint32 data_size, uint32 stride)
+
+    D3D12ResourceAllocator::D3D12ResourceAllocator(ID3D12Device* device, std::unique_ptr<D3D12Memory::ID3D12MemoryAllocator> allocator)
+        :mDevice(device), mFrameIndex(0), mMemoryAllocator(std::move(allocator))
+    {
+        mUploadBufferAllocator = std::make_unique<UploadBufferAllocator>(device);
+        mCPUDescriptorAllocator = std::make_unique<CPUDescriptorAllocator>(device);
+
+        for (uint32 i = 0; i < FrameResourceCount; i++)
+        {
+            // create command list
+            ID3D12GraphicsCommandList* resource_command_list;
+            ID3D12CommandAllocator* resource_command_allocator;
+            ThrowIfFailed(mDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&resource_command_allocator)));
+            ThrowIfFailed(mDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, resource_command_allocator, nullptr, IID_PPV_ARGS(&resource_command_list)));
+
+            ThrowIfFailed(resource_command_list->Close());
+
+            mResourceCommandList[i] = resource_command_list;
+            mResourceCommandAllocator[i] = resource_command_allocator;
+        }
+    }
+
+    std::shared_ptr<DeviceVertexBuffer> D3D12ResourceAllocator::CreateVertexBuffer(const void* data, uint32 data_size, uint32 stride)
     {
         ASSERT(data_size % stride == 0);
 
@@ -236,7 +244,7 @@ namespace MRenderer
         return std::make_shared<DeviceVertexBuffer>(std::move(resource), vbv);
     }
 
-    std::shared_ptr<DeviceIndexBuffer> D3D12Device::CreateIndexBuffer(const void* data, uint32 data_size)
+    std::shared_ptr<DeviceIndexBuffer> D3D12ResourceAllocator::CreateIndexBuffer(const void* data, uint32 data_size)
     {  
         ASSERT(data_size % sizeof(IndexType) == 0);
 
@@ -252,7 +260,7 @@ namespace MRenderer
         return std::make_shared<DeviceIndexBuffer>(std::move(resource), ibv);
     }
 
-    std::shared_ptr<DeviceStructuredBuffer> D3D12Device::CreateStructuredBuffer(uint32 data_size , uint32 stride, const void* initial_data/*=nullptr*/)
+    std::shared_ptr<DeviceStructuredBuffer> D3D12ResourceAllocator::CreateStructuredBuffer(uint32 data_size , uint32 stride, const void* initial_data/*=nullptr*/)
     {
         ASSERT(data_size % stride == 0);
         ASSERT(stride % 4 == 0);
@@ -296,10 +304,8 @@ namespace MRenderer
         return resource;
     }
 
-    std::shared_ptr<DeviceTexture2D> D3D12Device::CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, ETexture2DFlag flag, uint32 mip_chain_mem_size/*=0*/, const void* mip_chain/*=nullptr*/)
+    std::shared_ptr<DeviceTexture2D> D3D12ResourceAllocator::CreateTexture2D(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, ETexture2DFlag flag, uint32 mip_chain_mem_size/*=0*/, const void* mip_chain/*=nullptr*/)
     {
-        ASSERT(format != ETextureFormat_DepthStencil);
-
         // determine format
         DXGI_FORMAT dxgi_format, srv_format = {};
         if (!(flag & ETexture2DFlag::ETexture2DFlag_AllowDepthStencil))
@@ -358,7 +364,7 @@ namespace MRenderer
         };
 
         MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
-        auto resource = std::make_shared<DeviceTexture2D>(D3D12Resource(allocation->Resource(), res_state, nullptr));
+        auto resource = std::make_shared<DeviceTexture2D>(D3D12Resource(allocation->Resource(), res_state, nullptr), flag);
 
         // srv descriptor
         D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
@@ -434,7 +440,7 @@ namespace MRenderer
                 .ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D,
                 .Texture2D = {
                     .MipSlice = 0,
-                }
+                },
             };
             resource->SetDepthStencilView(CreateDepthStencilView(&dsv_desc, resource->Resource()));
         }
@@ -448,7 +454,7 @@ namespace MRenderer
     }
 
 
-    std::shared_ptr<DeviceTexture2DArray> D3D12Device::CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access/*=false*/, uint32 mip_chain_mem_size/*=0*/, const std::array<const void*, NumCubeMapFaces>* mip_chains/*=nullptr*/)
+    std::shared_ptr<DeviceTexture2DArray> D3D12ResourceAllocator::CreateTextureCube(uint32 width, uint32 height, uint32 mip_level, ETextureFormat format, bool unorder_access/*=false*/, uint32 mip_chain_mem_size/*=0*/, const std::array<const void*, NumCubeMapFaces>* mip_chains/*=nullptr*/)
     {
         DXGI_FORMAT dxgi_format = static_cast<DXGI_FORMAT>(format);
 
@@ -460,7 +466,7 @@ namespace MRenderer
         };
 
         MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
-        auto resource = std::make_shared<DeviceTexture2DArray>(D3D12Resource(allocation, D3D12_RESOURCE_STATE_COPY_DEST, nullptr));
+        auto resource = std::make_shared<DeviceTexture2DArray>(D3D12Resource(allocation, this, D3D12_RESOURCE_STATE_COPY_DEST, nullptr));
 
         // generate srv descriptor
         D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc
@@ -510,7 +516,7 @@ namespace MRenderer
         return resource;
     }
 
-    std::shared_ptr<DeviceConstantBuffer> D3D12Device::CreateConstBuffer(uint32 buffer_size)
+    std::shared_ptr<DeviceConstantBuffer> D3D12ResourceAllocator::CreateConstBuffer(uint32 buffer_size)
     {
         // must be a multiple of 256 bytes
         buffer_size = AlignUp(buffer_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
@@ -535,7 +541,7 @@ namespace MRenderer
             void* mapped = nullptr;
             CD3DX12_RANGE readRange(0, 0); // we don't need to read this buffer from cpu side
             ThrowIfFailed(allocation->Resource()->Map(0, &readRange, &mapped));
-            resource_array[i] = D3D12Resource(allocation, D3D12_RESOURCE_STATE_GENERIC_READ, static_cast<uint8*>(mapped));
+            resource_array[i] = D3D12Resource(allocation, this, D3D12_RESOURCE_STATE_GENERIC_READ, static_cast<uint8*>(mapped));
         }
         auto cbuffer = std::make_shared<DeviceConstantBuffer>(std::move(resource_array), buffer_size);
 
@@ -545,16 +551,215 @@ namespace MRenderer
         {
             D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc;
             cbv_desc.SizeInBytes = buffer_size;
-            cbv_desc.BufferLocation = cbuffer->Resource(i)->Resource()->GetGPUVirtualAddress();
+            cbv_desc.BufferLocation = cbuffer->IndexConstantBuffer(i)->Resource()->GetGPUVirtualAddress();
 
-            cbv_array[i] = CreateConstantBufferView(&cbv_desc, cbuffer->Resource(i));
+            cbv_array[i] = CreateConstantBufferView(&cbv_desc, cbuffer->IndexConstantBuffer(i));
         }
         cbuffer->SetConstantBufferView(std::move(cbv_array));
 
         return cbuffer;
     }
 
-    std::shared_ptr<PipelineStateObject> D3D12Device::CreateGraphicsPipelineStateObject(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program)
+    void D3D12ResourceAllocator::CommitTextureSubresource(DeviceTexture* dest, uint32 array_slice, uint32 mip_chain_mem_size, const void* mip_chain)
+    {
+        ASSERT(dest && mip_chain);
+        ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
+
+        uint32 tex_width = dest->Width();
+        uint32 tex_height = dest->Height();
+        uint32 tex_depth = dest->Depth();
+        uint32 mip_levels = dest->MipLevels();
+        uint32 pixel_size = GetPixelSize(dest->Format());
+
+        ASSERT(mip_chain_mem_size == CalculateTextureSize(tex_width, tex_height, mip_levels, pixel_size));
+
+        // calculate subresource index
+        uint32 subres_index_0 = D3D12CalcSubresource(0, array_slice, 0, mip_levels, tex_depth); // subresources index for the first mip level
+        uint32 subres_index_n = D3D12CalcSubresource(mip_levels - 1, array_slice, 0, mip_levels, tex_depth); // subresources index for the last mip level
+        ASSERT(subres_index_n - subres_index_0 + 1 == mip_levels); // mipmaps in a array slice should be contiguous
+
+        // transition resource state
+        dest->Resource()->TransitionBarrier(command_list, D3D12_RESOURCE_STATE_COPY_DEST);
+
+        // allocate upload buffer
+        ID3D12Resource* raw_resource = dest->Resource()->Resource();
+        size_t intermediate_size = GetRequiredIntermediateSize(raw_resource, subres_index_0, mip_levels);
+        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
+
+        // fill the subresource table for @UpdateSubresources
+        constexpr uint32 MAX_SUBRESOURCES_SIZE = 128; // for avoiding heap allocation during this function call, maybe move this to heap memory in the future
+        std::array<D3D12_SUBRESOURCE_DATA, MAX_SUBRESOURCES_SIZE> subresources;
+        ASSERT(mip_levels < MAX_SUBRESOURCES_SIZE);
+
+#ifndef NDebug
+        // check our CalculateMipmapLayout part is consistent with dx12 layout
+        std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT, MAX_SUBRESOURCES_SIZE> dx12_layout;
+        std::array<uint32, MAX_SUBRESOURCES_SIZE> num_rows;
+        std::array<uint64, MAX_SUBRESOURCES_SIZE> row_sizes;
+
+        auto desc = raw_resource->GetDesc();
+        mDevice->GetCopyableFootprints(&desc, subres_index_0, mip_levels, 0, dx12_layout.data(), num_rows.data(), row_sizes.data(), nullptr);
+#endif // !NDebug
+
+        for (uint32 i = 0; i < mip_levels; i++)
+        {
+            MipmapLayout m_layout = CalculateMipmapLayout(dest->Width(), dest->Height(), dest->MipLevels(), pixel_size, i);
+
+#ifndef NDebug
+            const D3D12_SUBRESOURCE_FOOTPRINT& slice_layout = dx12_layout[i].Footprint;
+            ASSERT(row_sizes[i] * num_rows[i] == m_layout.MipSize);
+#endif // !NDebug
+
+            subresources[i] =
+            {
+                .pData = static_cast<const uint8*>(mip_chain) + m_layout.BaseOffset,
+                .RowPitch = static_cast<LONG_PTR>(m_layout.Width * pixel_size),
+                .SlicePitch = static_cast<LONG_PTR>(m_layout.Width * m_layout.Height * pixel_size),
+            };
+        }
+
+        // copy subresources to gpu side
+        UpdateSubresources(command_list, raw_resource, upload_buffer.resource, upload_buffer.offset, subres_index_0, mip_levels, subresources.data());
+    }
+
+    void D3D12ResourceAllocator::CommitBuffer(D3D12Resource* resource, const void* data, uint32 size)
+    {
+        ASSERT(data);
+
+        // allocate upload buffer
+        size_t intermediate_size = GetRequiredIntermediateSize(resource->Resource(), 0, 1);
+
+        ASSERT(size <= intermediate_size);
+        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
+
+        // copy data to the memory in the upload heap
+        upload_buffer.Upload(data, size);
+
+        // transfer data from upload buffer to vertex buffer
+        ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
+
+        resource->TransitionBarrier(command_list, D3D12_RESOURCE_STATE_COPY_DEST);
+        command_list->CopyBufferRegion(resource->Resource(), 0, upload_buffer.resource, upload_buffer.offset, size);
+    }
+
+    D3D12Resource D3D12ResourceAllocator::CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/)
+    {
+        // allocate vertex buffer
+        D3D12_RESOURCE_STATES state = initial_data ? D3D12_RESOURCE_STATE_COPY_DEST : initial_state;
+
+        AllocationDesc desc = {
+            .resource_desc = CD3DX12_RESOURCE_DESC::Buffer(size, unordered_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+            .heap_type = D3D12_HEAP_TYPE_DEFAULT,
+            .initial_state = state,
+        };
+        D3D12Resource resource(mMemoryAllocator->Allocate(desc), this, state, nullptr);
+
+        if (initial_data)
+        {
+            CommitBuffer(&resource, initial_data, size);
+        }
+
+        return resource;
+    }
+
+    std::shared_ptr<DeviceSampler> D3D12ResourceAllocator::CreateSampler(ESamplerFilter filter_mode, ESamplerAddressMode address_mode)
+    {
+        // sampler
+        D3D12_SAMPLER_DESC desc = {};
+        desc.Filter = static_cast<D3D12_FILTER>(filter_mode);
+        desc.AddressU = static_cast<D3D12_TEXTURE_ADDRESS_MODE>(address_mode);
+        desc.AddressV = static_cast<D3D12_TEXTURE_ADDRESS_MODE>(address_mode);
+        desc.AddressW = static_cast<D3D12_TEXTURE_ADDRESS_MODE>(address_mode);
+        desc.MinLOD = 0;
+        desc.MaxLOD = D3D12_FLOAT32_MAX;
+        desc.MipLODBias = 0.0f;
+        desc.MaxAnisotropy = 16;
+        desc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        desc.BorderColor[0] = desc.BorderColor[1] = desc.BorderColor[2] = desc.BorderColor[3] = 1;
+
+        CPUDescriptor descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+        mDevice->CreateSampler(&desc, descriptor.CPUDescriptorHandle());
+
+        return std::make_shared<DeviceSampler>(std::move(descriptor));
+    }
+
+    ShaderResourceView D3D12ResourceAllocator::CreateShaderResourceView(const D3D12_SHADER_RESOURCE_VIEW_DESC* desc, D3D12Resource* resource)
+    {
+        CPUDescriptor srv_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        mDevice->CreateShaderResourceView(resource->Resource(), desc, srv_descriptor.CPUDescriptorHandle());
+        return ShaderResourceView(resource, std::move(srv_descriptor));
+    }
+
+    UnorderAccessView D3D12ResourceAllocator::CreateUnorderedAccessView(const D3D12_UNORDERED_ACCESS_VIEW_DESC* desc, D3D12Resource* resource)
+    {
+        CPUDescriptor uav_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        mDevice->CreateUnorderedAccessView(resource->Resource(), nullptr, desc, uav_descriptor.CPUDescriptorHandle());
+        return UnorderAccessView(resource, std::move(uav_descriptor));
+    }
+
+    RenderTargetView D3D12ResourceAllocator::CreateRenderTargetView(const D3D12_RENDER_TARGET_VIEW_DESC* desc, D3D12Resource* resource)
+    {
+        CPUDescriptor cpu_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        mDevice->CreateRenderTargetView(resource->Resource(), desc, cpu_descriptor.CPUDescriptorHandle());
+        return RenderTargetView(resource, std::move(cpu_descriptor));
+    }
+
+    DepthStencilView D3D12ResourceAllocator::CreateDepthStencilView(const D3D12_DEPTH_STENCIL_VIEW_DESC* desc, D3D12Resource* resource)
+    {
+        CPUDescriptor dsv_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+        mDevice->CreateDepthStencilView(resource->Resource(), desc, dsv_descriptor.CPUDescriptorHandle());
+        return DepthStencilView(resource, std::move(dsv_descriptor));
+    }
+
+    ConstantBufferView D3D12ResourceAllocator::CreateConstantBufferView(const D3D12_CONSTANT_BUFFER_VIEW_DESC* desc, D3D12Resource* resource)
+    {
+        CPUDescriptor descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        mDevice->CreateConstantBufferView(desc, descriptor.CPUDescriptorHandle());
+        return ConstantBufferView(resource, std::move(descriptor));
+    }
+
+    void D3D12ResourceAllocator::FlushCommandList(ID3D12CommandQueue* cmd_queue)
+    {
+        ThrowIfFailed(mResourceCommandList[mFrameIndex]->Close());
+
+        ID3D12CommandList* cmd_list [] = {mResourceCommandList[mFrameIndex].Get()};
+        cmd_queue->ExecuteCommandLists(1, cmd_list);
+    }
+
+    void D3D12ResourceAllocator::NextFrame()
+    {
+        mFrameIndex = (mFrameIndex + 1) % FrameResourceCount;
+
+        // clear command list
+        ThrowIfFailed(mResourceCommandAllocator[mFrameIndex]->Reset());
+        ThrowIfFailed(mResourceCommandList[mFrameIndex]->Reset(mResourceCommandAllocator[mFrameIndex].Get(), nullptr));
+
+        // clear previous released resources
+        for (auto& res : mResourceCache[mFrameIndex])
+        {
+            res->Allocator()->Free(res);
+        }
+        mResourceCache[mFrameIndex].clear();
+
+        // clear upload buffer
+        mUploadBufferAllocator->NextFrame();
+    }
+
+    void D3D12ResourceAllocator::ReleaseResource(MemoryAllocation* res)
+    {
+        ASSERT(res && res->Allocator() == mMemoryAllocator.get());
+        mResourceCache[mFrameIndex].push_back(res);
+    }
+
+    void D3D12ResourceAllocator::ResetPlacedMemory()
+    {
+        D3D12Memory::ID3D12TransientMemoryAllocator* allocator = dynamic_cast<D3D12Memory::ID3D12TransientMemoryAllocator*>(mMemoryAllocator.get());
+        ASSERT(allocator);
+
+        allocator->ResetPlacedMemory();
+    }
+
+    std::shared_ptr<PipelineStateObject> D3D12Device::CreateGraphicsPipelineStateObject(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const GraphicsPassPsoDesc* pass_desc, const D3D12ShaderProgram* program)
     {
         IDxcBlob* vs = program->mVS->GetShaderByteCode();
         IDxcBlob* ps = program->mPS->GetShaderByteCode();
@@ -634,7 +839,7 @@ namespace MRenderer
         };
         
         // render_target
-        pso_desc.DSVFormat = DepthStencilFormat;
+        pso_desc.DSVFormat = D3D12ResourceAllocator::DepthStencilFormat;
         pso_desc.NumRenderTargets = pass_desc->NumRenderTarget;
         for (uint32 i = 0; i < pso_desc.NumRenderTargets; i++) 
         {
@@ -669,88 +874,6 @@ namespace MRenderer
         return std::make_shared<PipelineStateObject>(pso);
     }
 
-    void D3D12Device::CommitTextureSubresource(DeviceTexture* dest, uint32 array_slice, uint32 mip_chain_mem_size, const void* mip_chain)
-    {
-        ASSERT(dest && mip_chain);
-        ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
-
-        uint32 tex_width = dest->Width();
-        uint32 tex_height = dest->Height();
-        uint32 tex_depth = dest->Depth();
-        uint32 mip_levels = dest->MipLevels();
-        uint32 pixel_size = GetPixelSize(dest->Format());
-
-        ASSERT(mip_chain_mem_size == CalculateTextureSize(tex_width, tex_height, mip_levels, pixel_size));
-
-        // calculate subresource index
-        uint32 subres_index_0 = D3D12CalcSubresource(0, array_slice, 0, mip_levels, tex_depth); // subresources index for the first mip level
-        uint32 subres_index_n = D3D12CalcSubresource(mip_levels - 1, array_slice, 0, mip_levels, tex_depth); // subresources index for the last mip level
-        ASSERT(subres_index_n - subres_index_0 + 1 == mip_levels); // mipmaps in a array slice should be contiguous
-
-        // transition resource state
-        dest->Resource()->TransitionBarrier(command_list, D3D12_RESOURCE_STATE_COPY_DEST);
-
-        // allocate upload buffer
-        ID3D12Resource* raw_resource = dest->Resource()->Resource();
-        size_t intermediate_size = GetRequiredIntermediateSize(raw_resource, subres_index_0, mip_levels);
-        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
-
-        // fill the subresource table for @UpdateSubresources
-        constexpr uint32 MAX_SUBRESOURCES_SIZE = 128; // for avoiding heap allocation during this function call, maybe move this to heap memory in the future
-        std::array<D3D12_SUBRESOURCE_DATA, MAX_SUBRESOURCES_SIZE> subresources;
-        ASSERT(mip_levels < MAX_SUBRESOURCES_SIZE);
-
-#ifndef NDebug
-        // check our CalculateMipmapLayout part is consistent with dx12 layout
-        std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT, MAX_SUBRESOURCES_SIZE> dx12_layout;
-        std::array<uint32, MAX_SUBRESOURCES_SIZE> num_rows;
-        std::array<uint64, MAX_SUBRESOURCES_SIZE> row_sizes;
-
-        auto desc = raw_resource->GetDesc();
-        mDevice->GetCopyableFootprints(&desc, subres_index_0, mip_levels, 0, dx12_layout.data(), num_rows.data(), row_sizes.data(), nullptr);
-#endif // !NDebug
-
-        for (uint32 i = 0; i < mip_levels; i++)
-        {
-            MipmapLayout m_layout = CalculateMipmapLayout(dest->Width(), dest->Height(), dest->MipLevels(), pixel_size, i);
-
-#ifndef NDebug
-            const D3D12_SUBRESOURCE_FOOTPRINT& slice_layout = dx12_layout[i].Footprint;
-            ASSERT(row_sizes[i] * num_rows[i] == m_layout.MipSize);
-#endif // !NDebug
-
-            subresources[i] =
-            {
-                .pData = static_cast<const uint8*>(mip_chain) + m_layout.BaseOffset,
-                .RowPitch = static_cast<LONG_PTR>(m_layout.Width * pixel_size),
-                .SlicePitch = static_cast<LONG_PTR>(m_layout.Width * m_layout.Height * pixel_size),
-            };
-        }
-
-        // copy subresources to gpu side
-        UpdateSubresources(command_list, raw_resource, upload_buffer.resource, upload_buffer.offset, subres_index_0, mip_levels, subresources.data());
-    }
-
-    void D3D12Device::CommitBuffer(D3D12Resource* resource, const void* data, uint32 size)
-    {
-        ASSERT(data);
-
-        // allocate upload buffer
-        size_t intermediate_size = GetRequiredIntermediateSize(resource->Resource(), 0, 1);
-
-        ASSERT(size <= intermediate_size);
-        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
-
-        // copy data to the memory in the upload heap
-        upload_buffer.Upload(data, size);
-
-        // transfer data from upload buffer to vertex buffer
-        ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
-
-        resource->TransitionBarrier(command_list, D3D12_RESOURCE_STATE_COPY_DEST);
-        command_list->CopyBufferRegion(resource->Resource(), 0, upload_buffer.resource, upload_buffer.offset, size);
-    }
-
     ID3D12RootSignature* D3D12Device::GetRootSignature()
     {
         return mRootSignature.Get();
@@ -769,32 +892,6 @@ namespace MRenderer
     DeviceIndexBuffer* D3D12Device::GetScreenMeshIndicies()
     {
         return mScreenIndexBuffer.get();
-    }
-
-    void D3D12Device::ReleaseResource(MemoryAllocation* res)
-    {
-        ASSERT(res);
-        mResourceCache[mFrameIndex].push_back(res);
-    }
-
-    D3D12Resource D3D12Device::CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/)
-    {
-        // allocate vertex buffer
-        D3D12_RESOURCE_STATES state = initial_data ? D3D12_RESOURCE_STATE_COPY_DEST : initial_state;
-
-        AllocationDesc desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Buffer(size, unordered_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
-            .heap_type = D3D12_HEAP_TYPE_DEFAULT,
-            .initial_state = state,
-        };
-        D3D12Resource resource(mMemoryAllocator->Allocate(desc), state, nullptr);
-
-        if (initial_data)
-        {
-            CommitBuffer(&resource, initial_data, size);
-        }
-
-        return resource;
     }
 
     ID3D12RootSignature* D3D12Device::CreateRootSignature() const
@@ -867,82 +964,12 @@ namespace MRenderer
         return root_signature;
     }
 
-    ShaderResourceView D3D12Device::CreateShaderResourceView(const D3D12_SHADER_RESOURCE_VIEW_DESC* desc, D3D12Resource* resource)
-    {
-        CPUDescriptor srv_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        mDevice->CreateShaderResourceView(resource->Resource(), desc, srv_descriptor.CPUDescriptorHandle());
-        return ShaderResourceView(resource, std::move(srv_descriptor));
-    }
-
-    UnorderAccessView D3D12Device::CreateUnorderedAccessView(const D3D12_UNORDERED_ACCESS_VIEW_DESC* desc, D3D12Resource* resource)
-    {
-        CPUDescriptor uav_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        mDevice->CreateUnorderedAccessView(resource->Resource(), nullptr, desc, uav_descriptor.CPUDescriptorHandle());
-        return UnorderAccessView(resource, std::move(uav_descriptor));
-    }
-
-    RenderTargetView D3D12Device::CreateRenderTargetView(const D3D12_RENDER_TARGET_VIEW_DESC* desc, D3D12Resource* resource)
-    {
-        CPUDescriptor cpu_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        mDevice->CreateRenderTargetView(resource->Resource(), desc, cpu_descriptor.CPUDescriptorHandle());
-        return RenderTargetView(resource, std::move(cpu_descriptor));
-    }
-
-    DepthStencilView D3D12Device::CreateDepthStencilView(const D3D12_DEPTH_STENCIL_VIEW_DESC* desc, D3D12Resource* resource)
-    {
-        CPUDescriptor dsv_descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-        mDevice->CreateDepthStencilView(resource->Resource(), desc, dsv_descriptor.CPUDescriptorHandle());
-        return DepthStencilView(resource, std::move(dsv_descriptor));
-    }
-
-    ConstantBufferView D3D12Device::CreateConstantBufferView(const D3D12_CONSTANT_BUFFER_VIEW_DESC* desc, D3D12Resource* resource)
-    {
-        CPUDescriptor descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        mDevice->CreateConstantBufferView(desc, descriptor.CPUDescriptorHandle());
-        return ConstantBufferView(resource, std::move(descriptor));
-    }
-
-    inline void D3D12Device::ClearResourceCache(uint32 frame_index)
-    {
-        for (auto& res : mResourceCache[frame_index])
-        {
-            res->Allocator()->Free(res);
-        }
-        mResourceCache[frame_index].clear();
-    }
-
-    std::shared_ptr<DeviceSampler> D3D12Device::CreateSampler(ESamplerFilter filter_mode, ESamplerAddressMode address_mode)
-    {
-        // sampler
-        D3D12_SAMPLER_DESC desc = {};
-        desc.Filter = static_cast<D3D12_FILTER>(filter_mode);
-        desc.AddressU = static_cast<D3D12_TEXTURE_ADDRESS_MODE>(address_mode);
-        desc.AddressV = static_cast<D3D12_TEXTURE_ADDRESS_MODE>(address_mode);
-        desc.AddressW = static_cast<D3D12_TEXTURE_ADDRESS_MODE>(address_mode);
-        desc.MinLOD = 0;
-        desc.MaxLOD = D3D12_FLOAT32_MAX;
-        desc.MipLODBias = 0.0f;
-        desc.MaxAnisotropy = 16;
-        desc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-        desc.BorderColor[0] = desc.BorderColor[1] = desc.BorderColor[2] = desc.BorderColor[3] = 1;
-
-        CPUDescriptor descriptor = mCPUDescriptorAllocator->Allocate(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-        mDevice->CreateSampler(&desc, descriptor.CPUDescriptorHandle());
-
-        return std::make_shared<DeviceSampler>(std::move(descriptor));
-    }
-
     void D3D12Device::BeginFrame()
     {
         mFrameIndex = (mFrameIndex + 1) % FrameResourceCount;
 
         // clear frame resource
-        ThrowIfFailed(mResourceCommandAllocator[mFrameIndex]->Reset());
-        ThrowIfFailed(mResourceCommandList[mFrameIndex]->Reset(mResourceCommandAllocator[mFrameIndex].Get(), nullptr));
-        mUploadBufferAllocator->NextFrame();
-
-        // clear released resource
-        ClearResourceCache(mFrameIndex);
+        mResourceAllocator->NextFrame();
 
         if (!mResourceInitialized) UNLIKEYLY
         {
@@ -950,20 +977,13 @@ namespace MRenderer
         }
     }
 
-    void D3D12Device::EndFrame(D3D12CommandList* render_cmd_list)
+    void D3D12Device::EndFrame(D3D12CommandList* render_cmd_list/*=nullptr*/)
     {
-        ID3D12GraphicsCommandList* res_cmd_list = mResourceCommandList[mFrameIndex].Get();
-        ThrowIfFailed(res_cmd_list->Close());
+        mResourceAllocator->FlushCommandList(mCommandQueue.Get());
 
-        if (render_cmd_list) 
+        if (render_cmd_list)
         {
-            ASSERT(!render_cmd_list->IsOpen());
-            ID3D12CommandList* cmd_lists[] = {res_cmd_list, render_cmd_list->GetCommandList()};
-            mCommandQueue->ExecuteCommandLists(2, &(cmd_lists[0]));
-        }
-        else 
-        {
-            ID3D12CommandList* cmd_lists[] = { res_cmd_list};
+            ID3D12CommandList* cmd_lists[] = { render_cmd_list->GetCommandList() };
             mCommandQueue->ExecuteCommandLists(1, &(cmd_lists[0]));
         }
 

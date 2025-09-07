@@ -12,7 +12,7 @@ namespace MRenderer
     {
         struct Desc {
             PipelineStateDesc PipelineDesc;
-            RenderPassStateDesc RenderPassState;
+            GraphicsPassPsoDesc RenderPassState;
             EVertexFormat VertexFormat;
             uint8 ShaderHashCode;
             bool IsCompute;
@@ -106,7 +106,7 @@ namespace MRenderer
         void SetResourceBinding(const ResourceBinding* resource_binding, bool is_compute);
 
         // set pipeline state
-        void SetGraphicsPipelineState(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const RenderPassStateDesc* pass_desc, const D3D12ShaderProgram* program);
+        void SetGraphicsPipelineState(EVertexFormat format, const PipelineStateDesc* pipeline_desc, const GraphicsPassPsoDesc* pass_desc, const D3D12ShaderProgram* program);
         void SetComputePipelineState(const D3D12ShaderProgram* program);
 
         // set stencil reference value

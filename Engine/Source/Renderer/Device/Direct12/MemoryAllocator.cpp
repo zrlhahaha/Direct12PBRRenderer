@@ -195,74 +195,6 @@ namespace MRenderer
 
     namespace D3D12Memory
     {
-        MemoryAllocator::MemoryAllocator(ID3D12Device* device)
-            : mDevice(device), mHeapAllocator(device)
-        {
-        }
-
-        MemoryAllocator::~MemoryAllocator()
-        {
-        }
-
-        MemoryAllocation* MemoryAllocator::Allocate(AllocationDesc desc)
-        {
-            MemoryAllocation* ret = mAllocationAllocator.Allocate();
-
-            if (desc.prefer_commited)
-            {
-                ret->Allocation = AllocateCommitedResouce(desc);
-            }
-            else
-            {
-                PlacedAllocation placed_allocation = mHeapAllocator.Allocate(desc);
-                if (placed_allocation.Valid()) 
-                {
-                    ret->Allocation = placed_allocation;
-                }
-                else 
-                {
-                    ret->Allocation = AllocateCommitedResouce(desc);
-                }
-            }
-
-            ret->Source = this;
-            return ret;
-        }
-
-        void MemoryAllocator::Free(MemoryAllocation*& allocation)
-        {
-            Overload overloads
-            {
-                [&](CommitedAllocation& allocation) {allocation.Resource->Release(); },
-                [&](PlacedAllocation& allocation) {mHeapAllocator.Free(allocation); },
-            };
-
-            std::visit(overloads, allocation->Allocation);
-            mAllocationAllocator.Free(allocation);
-        }
-
-        CommitedAllocation MemoryAllocator::AllocateCommitedResouce(const AllocationDesc& desc)
-        {
-            ID3D12Resource* res;
-            auto heap_property = CD3DX12_HEAP_PROPERTIES(desc.heap_type);
-
-            bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
-
-            ThrowIfFailed(mDevice->CreateCommittedResource(
-                &heap_property,
-                D3D12_HEAP_FLAG_NONE,
-                &desc.resource_desc,
-                desc.initial_state,
-                use_default_value ? &desc.defalut_value : nullptr,
-                IID_PPV_ARGS(&res)
-            ));
-
-            CommitedAllocation allocation = {};
-            allocation.Resource = res;
-
-            return allocation;
-        }
-
         HeapMemoryAllocator::HeapMemoryAllocator(ID3D12Device* device, D3D12_HEAP_TYPE heap_type, D3D12_HEAP_FLAGS heap_flag)
             :mDevice(device), mHeapFlag(heap_flag), mHeapType(heap_type)
         {
@@ -314,7 +246,7 @@ namespace MRenderer
             allocation = {};
         }
 
-        void HeapMemoryAllocator::AliasFree(PlacedAllocation& allocation)
+        void HeapMemoryAllocator::ReleasePlacedMemory(PlacedAllocation& allocation)
         {
             ASSERT(allocation.Resource && allocation.PageIndex && allocation.Source == this);
 
@@ -411,6 +343,7 @@ namespace MRenderer
             {
                 heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES;
             }
+            return heap_flag;
         }
 
         MultiHeapMemoryAllocator::MultiHeapMemoryAllocator(ID3D12Device* device)
@@ -423,7 +356,7 @@ namespace MRenderer
                     D3D12_HEAP_TYPE heap_type = DeviceHeapTypes[i];
                     D3D12_HEAP_FLAGS heap_flag = DeviceHeapFlags[j];
 
-                    mHeaps.emplace_back(device, heap_type, heap_flag);
+                    mHeaps.emplace_back(std::make_unique<HeapMemoryAllocator>(device, heap_type, heap_flag));
                 }
             }
         }
@@ -447,7 +380,7 @@ namespace MRenderer
 
             // find out where to allocate
             uint32 heap_index = HeapIndex(desc.heap_type, heap_flag);
-            PlacedAllocation ret = mHeaps[heap_index].Allocate(desc);
+            PlacedAllocation ret = mHeaps[heap_index]->Allocate(desc);
 
             return ret;
         }
@@ -458,8 +391,18 @@ namespace MRenderer
             allocation.Source->Free(allocation);
         }
 
-        void MultiHeapMemoryAllocator::AliasFree(PlacedAllocation& allocation)
+        void MultiHeapMemoryAllocator::ReleasePlacedMemory(PlacedAllocation& allocation)
         {
+            ASSERT(allocation.Resource && allocation.Source);
+            allocation.Source->ReleasePlacedMemory(allocation);
+        }
+
+        void MultiHeapMemoryAllocator::ResetPlacedMemory()
+        {
+            for (auto& heap : mHeaps)
+            {
+                heap->AliasReset();
+            }
         }
 
         inline uint32 MultiHeapMemoryAllocator::HeapIndex(D3D12_HEAP_TYPE heap_type, D3D12_HEAP_FLAGS heap_flag)
@@ -472,5 +415,5 @@ namespace MRenderer
 
             return ret;
         }
-    }
+}
 }

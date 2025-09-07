@@ -158,4 +158,12 @@ float luminance(float3 color)
 {
     return dot(color, float3(0.2126, 0.7152, 0.0722));
 }
+
+float4 screen_space_to_camera_space(float2 uv, float depth_ndc)
+{
+    float4 pos_ndc = float4(uv * 2 - 1, depth_ndc, 1);
+    float4 pos_view = mul(pos_ndc, InvProjection);
+    pos_view /= pos_view.w;
+    return pos_view;
+}
 #endif

@@ -35,13 +35,11 @@ namespace MRenderer
             shader_profile.data(),
             DXC_ARG_PACK_MATRIX_ROW_MAJOR,
             DXC_ARG_WARNINGS_ARE_ERRORS,
-            DXC_ARG_ALL_RESOURCES_BOUND,
             DXC_ARG_DEBUG, // disable optimization for now
             DXC_ARG_SKIP_OPTIMIZATIONS,
             L"-I",
             LShaderFolderPath,
-            //L"-Qstrip_debug",
-            L"-Qembed_debug"
+            L"-Qembed_debug",
         };
 
         ComPtr<IDxcResult> result;

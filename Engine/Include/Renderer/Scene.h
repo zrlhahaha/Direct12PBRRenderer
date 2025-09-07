@@ -3,7 +3,6 @@
 
 #include "Resource/ResourceDef.h"
 #include "Utils/MathLib.h"
-#include "Renderer/Pipeline/IPipeline.h"
 #include "Utils/LooseOctree.h"
 
 namespace MRenderer 
@@ -59,7 +58,7 @@ namespace MRenderer
 
         void PostDeserialized();
 
-        friend void Swap(SceneObject& lhs, SceneObject& rhs) 
+        friend void swap(SceneObject& lhs, SceneObject& rhs) 
         {
             using std::swap;
             swap(lhs.mName, rhs.mName);
@@ -98,9 +97,9 @@ namespace MRenderer
         void SetModel(const std::shared_ptr<ModelResource>& res);
         void PostDeserialized();
 
-        friend void Swap(SceneModel& lhs, SceneModel& rhs) 
+        friend void swap(SceneModel& lhs, SceneModel& rhs) 
         {
-            Swap(static_cast<SceneObject&>(lhs), static_cast<SceneObject&>(rhs));
+            swap(static_cast<SceneObject&>(lhs), static_cast<SceneObject&>(rhs));
             std::swap(lhs.mModel, rhs.mModel);
             std::swap(lhs.mLocalBound, rhs.mLocalBound);
         }
@@ -118,22 +117,31 @@ namespace MRenderer
     {
     public:
         SceneLight() 
-            : mColor(1, 1, 1), mRadius(1.0f), mIntensity(1.0f)
+            : mColor(1, 1, 1), mIntensity(1.0f)
         {
+            SetRadius(mRadius);
         }
 
         SceneLight(std::string_view name, float radius)
-            : SceneObject(name), mRadius(radius)
+            : SceneObject(name)
         {
+            SetRadius(mRadius);
         }
 
-        inline void SetRadius(float radius) { mRadius = radius; }
+        inline void SetRadius(float radius) 
+        { 
+            mRadius = radius; 
+            mLocalBound = AABB(Vector3(-1, -1, -1) * mRadius, Vector3(1, 1, 1) * mRadius);
+        }
+
         inline void SetColor(const Vector3& color) { mColor = color; }
         inline void SetIntensity(float intensity) { mIntensity = intensity; }
 
         inline float GetRadius() const { return mRadius; }
         inline const Vector3& GetColor() const { return mColor; }
         inline float GetIntensity() const { return mIntensity; }
+
+        void PostDeserialized();
 
     public:
         // serializable member

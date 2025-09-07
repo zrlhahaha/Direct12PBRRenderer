@@ -7,7 +7,7 @@ namespace MRenderer{
     SceneObject::SceneObject()
         :mScale(1.0, 1.0, 1.0)
     {
-        mConstantBuffer = GD3D12Device->CreateConstBuffer(sizeof(ConstantBufferInstance));
+        mConstantBuffer = GD3D12ResourceAllocator->CreateConstBuffer(sizeof(ConstantBufferInstance));
     }
 
     SceneObject::SceneObject(std::string_view name)
@@ -19,12 +19,12 @@ namespace MRenderer{
     SceneObject::SceneObject(SceneObject&& other)
         : SceneObject()
     {
-        Swap(*this, other);
+        swap(*this, other);
     }
 
     SceneObject& SceneObject::operator=(SceneObject other)
     {
-        Swap(*this, other);
+        swap(*this, other);
         return *this;
     }
 
@@ -96,5 +96,12 @@ namespace MRenderer{
         {
             AddOctreeElementInternal(mOctreeSceneLight, *mSceneLight[i], i);
         }
+    }
+
+    void SceneLight::PostDeserialized()
+    {
+        SceneObject::PostDeserialized();
+
+        mLocalBound = AABB(Vector3(-1, -1, -1) * mRadius, Vector3(1, 1, 1) * mRadius);
     }
 }

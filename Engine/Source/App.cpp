@@ -96,8 +96,9 @@ namespace MRenderer
 
         mScene = ResourceLoader::Instance().LoadResource<Scene>("Asset/Scene/main.json");
 
-        mCamera = std::make_unique<Camera>(0.4F * PI, mClientWidth, mClientHeight, 0.1F, 1000.0F);
-        mCamera->Move(Vector3(0, 0, -5));
+        mCamera = std::make_unique<Camera>(0.333f * PI, mClientWidth, mClientHeight, 0.1F, 1000.0F);
+        mCamera->Move(Vector3(0, 3, 10));
+        mCamera->Rotate(0, PI, 0);
 
         mRenderPipeline = std::make_unique<DeferredRenderPipeline>();
         mRenderScheduler = std::make_unique<RenderScheduler>(mRenderPipeline.get());

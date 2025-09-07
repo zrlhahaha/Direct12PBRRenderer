@@ -7,22 +7,23 @@ namespace MRenderer
     D3D12Resource::D3D12Resource(D3D12Resource&& other)
         :D3D12Resource()
     {
-        Swap(*this, other);
+        swap(*this, other);
     }
 
     D3D12Resource::~D3D12Resource()
     {
-        if (mAllocation)
+        if (mSource && mAllocation)
         {
-            GD3D12Device->ReleaseResource(mAllocation);
+            mSource->ReleaseResource(mAllocation);
         }
+        mSource = nullptr;
         mAllocation = nullptr;
         mResource = nullptr;
     }
 
     D3D12Resource& D3D12Resource::operator=(D3D12Resource&& other)
     {
-        Swap(*this, other);
+        swap(*this, other);
         return *this;
     }
 
@@ -67,7 +68,6 @@ namespace MRenderer
 
     void DeviceStructuredBuffer::Commit(const void* data, uint32 size)
     {
-        GD3D12Device->CommitBuffer(&mBuffer, data, size);
+        GD3D12ResourceAllocator->CommitBuffer(&mBuffer, data, size);
     }
-
 }

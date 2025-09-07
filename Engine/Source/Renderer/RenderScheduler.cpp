@@ -7,7 +7,7 @@ namespace MRenderer
     RenderScheduler::RenderScheduler(IRenderPipeline* pipeline)
         :mFrameGraph(nullptr)
     {
-        mGlobalConstantBuffer = GD3D12Device->CreateConstBuffer(sizeof(ConstantBufferGlobal));
+        mGlobalConstantBuffer = GD3D12ResourceAllocator->CreateConstBuffer(sizeof(ConstantBufferGlobal));
         mCommandList = std::make_unique<D3D12CommandList>(GD3D12RawDevice);
 
         SetupPipeline(pipeline);

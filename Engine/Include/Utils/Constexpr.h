@@ -81,7 +81,23 @@ namespace MRenderer
     template<typename T>
     constexpr bool is_array_v = is_array<T>::value;
 
+    template<typename... Args>
+    struct is_one_of;
 
+    template<typename T, typename U>
+    struct is_one_of<T, U> : std::false_type {};
+
+    template<typename T>
+    struct is_one_of<T, T> : std::true_type {};
+
+    template<typename T, typename U, typename... Args>
+    struct is_one_of<T, U, Args...> 
+    {
+        constexpr static bool value = std::is_same<T, U>::value || is_one_of<T, Args...>::value;
+    };
+
+    template<typename... Args>
+    constexpr bool is_one_of_v = is_one_of<Args...>::value;
 
     // get the Nth parameter in the parameter pack
     template<uint32 N, typename Type, typename... Args>
@@ -163,6 +179,19 @@ namespace MRenderer
 
     template<typename T>
     constexpr bool always_true_v = always_true<T>::value;
+
+    // see if T is in the variant template arguments
+    template<typename T, typename... Args>
+    struct variant_contain : std::false_type {};
+
+    template<typename T, typename... Args>
+    struct variant_contain <T, std::variant<Args...>>
+    {
+        constexpr static bool value = (std::is_same_v<T, Args> || ...);
+    };
+
+    template<typename T, typename... Args>
+    constexpr bool variant_contain_v = variant_contain<T, Args...>::value;
 
     // deduce variant type from tuple type
     // tuple<int, float> => std::variant<int, float>

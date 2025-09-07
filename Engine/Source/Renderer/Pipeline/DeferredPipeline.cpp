@@ -17,57 +17,64 @@ namespace MRenderer
     DeferredRenderPipeline::DeferredRenderPipeline()
         :IRenderPipeline()
     {
+    }
+
+    std::vector<IRenderPass*> DeferredRenderPipeline::Setup()
+    {
+        mPrefilterEnvMapPass = std::make_unique<PreFilterEnvMapPass>();
+        mPrecomputeBRDFPass = std::make_unique<PrecomputeBRDFPass>();
         mGBufferPass = std::make_unique<GBufferPass>();
         mDeferredShadingPass = std::make_unique<DeferredShadingPass>();
         mSkyboxPass = std::make_unique<SkyboxPass>();
-        mPrefilterEnvMapPass = std::make_unique<PreFilterEnvMapPass>();
-        mPrecomputeBRDFPass = std::make_unique<PrecomputeBRDFPass>();
+        mAutoExposurePass = std::make_unique<AutoExposurePass>();
         mToneMappingPass = std::make_unique<ToneMappingPass>();
         mPresentPass = std::make_unique<PresentPass>();
         mBloomPass = std::make_unique<BloomPass>();
+        mClusteredPass = std::make_unique<ClusteredPass>();
 
-        SetPresentPass(mPresentPass.get());
-    }
+        mPresentPass->SetFinalTexture(DeferredPipelineResource::ToneMappedTexture);
 
-    void DeferredRenderPipeline::Setup()
-    {
-        mGBufferPass->Connect();
-        mPrefilterEnvMapPass->Connect();
-        mPrecomputeBRDFPass->Connect();
-        mDeferredShadingPass->Connect(mGBufferPass.get(), mPrefilterEnvMapPass.get(), mPrecomputeBRDFPass.get());
-        mSkyboxPass->Connect(mGBufferPass.get(), mDeferredShadingPass.get());
-        mBloomPass->Connect(mSkyboxPass.get());
-        mToneMappingPass->Connect(mBloomPass.get());
-        mPresentPass->Connect(mToneMappingPass->FindOutput(ToneMappingPass::Output_ToneMappingRT));
+        std::vector<IRenderPass*> passes =
+        {
+            mPrefilterEnvMapPass.get(), mPrecomputeBRDFPass.get(), mClusteredPass.get(), mGBufferPass.get(),
+            mDeferredShadingPass.get(), mSkyboxPass.get(), mAutoExposurePass.get(), mToneMappingPass.get(), mBloomPass.get(), mPresentPass.get()
+        };
+
+        return passes;
     }
 
     SkyboxPass::SkyboxPass()
     {
         static MeshData mesh = DefaultResource::StandardSphereMesh();
 
-        mBoxIndexBuffer = GD3D12Device->CreateIndexBuffer(mesh.Indicies().GetData(), mesh.IndiciesCount() * sizeof(IndexType));
-        mBoxVertexBuffer = GD3D12Device->CreateVertexBuffer(mesh.Vertices().GetData(), mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>), sizeof(Vertex<SkyBoxMeshFormat>));
+        mBoxIndexBuffer = GD3D12ResourceAllocator->CreateIndexBuffer(mesh.Indicies().GetData(), mesh.IndiciesCount() * sizeof(IndexType));
+        mBoxVertexBuffer = GD3D12ResourceAllocator->CreateVertexBuffer(mesh.Vertices().GetData(), mesh.VerticesCount() * sizeof(Vertex<SkyBoxMeshFormat>), sizeof(Vertex<SkyBoxMeshFormat>));
+
+        mShadingState.SetShader("skybox.hlsl", false);
+
+        WriteResource(DeferredPipelineResource::DeferredShadingRT);
+        WriteResource(DeferredPipelineResource::DepthStencil);
     }
 
-    void SkyboxPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    void SkyboxPass::Execute(FGContext* context)
     {
-        auto sky_box = scene->GetSkyBox();
+        auto sky_box = context->Scene->GetSkyBox();
 
         if (sky_box) 
         {
-            PIXScope(cmd, "Skybox Pass");
+            PIXScope(context->CommandList, "Skybox Pass");
             mShadingState.SetTexture("SkyBox", sky_box->Resource());
 
             // pso
             static PipelineStateDesc state = PipelineStateDesc::Generate(true, false, ECullMode_None);
-            cmd->SetGraphicsPipelineState(SkyBoxMeshFormat, &state, GetPassStateDesc(), mShadingState.GetShader());
+            context->CommandList->SetGraphicsPipelineState(SkyBoxMeshFormat, &state, &mPassPsoDesc, mShadingState.GetShader());
 
             // draw skybox
-            cmd->DrawMesh(&mShadingState, SkyBoxMeshFormat, mBoxVertexBuffer.get(), mBoxIndexBuffer.get(), 0, mBoxIndexBuffer->IndiciesCount());
+            context->CommandList->DrawMesh(&mShadingState, SkyBoxMeshFormat, mBoxVertexBuffer.get(), mBoxIndexBuffer.get(), 0, mBoxIndexBuffer->IndiciesCount());
         }
     }
 
-    void PreFilterEnvMapPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    void PreFilterEnvMapPass::Execute(FGContext* context)
     {
         // generate prefilter cubemap of skybox
         // this pass only need to be executed one time
@@ -75,16 +82,16 @@ namespace MRenderer
         {
             mReady = true;
             
-            PIXScope(cmd, "Precompute PrefilterEnvMap Pass");
+            PIXScope(context->CommandList, "Precompute PrefilterEnvMap Pass");
 
             for (uint32 i = 0; i < PreFilterEnvMapMipsLevel; i++)
             {
                 ShadingState& shading_state = mShadingState[i];
                 shading_state.SetShader("env_map_gen.hlsl", true);
                 shading_state.SetRWTextureArray("PrefilterEnvMap", mPrefilterEnvMap.get());
-                if (scene->GetSkyBox()) 
+                if (context->Scene->GetSkyBox()) 
                 {
-                    shading_state.SetTexture("SkyBox", scene->GetSkyBox()->Resource());
+                    shading_state.SetTexture("SkyBox", context->Scene->GetSkyBox()->Resource());
                 }
 
                 ConstantBuffer cbuffer =
@@ -102,18 +109,18 @@ namespace MRenderer
                 uint32 mip_size = PreFilterEnvMapSize >> i;
                 uint32 thread_group_num = (mip_size + DispatchGroupSize - 1) / DispatchGroupSize;
 
-                cmd->Dispatch(&mShadingState[i], thread_group_num, thread_group_num, NumCubeMapFaces);
+                context->CommandList->Dispatch(&mShadingState[i], thread_group_num, thread_group_num, NumCubeMapFaces);
             }
         }
     }
 
-    void PrecomputeBRDFPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    void PrecomputeBRDFPass::Execute(FGContext* context)
     {
         if (!mReady)
         {
             mReady = true;
 
-            PIXScope(cmd, "Precompute BRDF Pass");
+            PIXScope(context->CommandList, "Precompute BRDF Pass");
 
             constexpr uint32 ThreadGroupSize = 8;
             constexpr uint32 ThreadGroupCount = 512 / ThreadGroupSize;
@@ -124,25 +131,25 @@ namespace MRenderer
             };
 
             mShadingState.SetConstantBuffer(cbuffer);
-            cmd->Dispatch(&mShadingState, ThreadGroupCount, ThreadGroupCount, 1);
+            context->CommandList->Dispatch(&mShadingState, ThreadGroupCount, ThreadGroupCount, 1);
         }
     }
      
-    void GBufferPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    void GBufferPass::Execute(FGContext* context)
     {
-        PIXScope(cmd, "Gbuffer Pass");
+        PIXScope(context->CommandList, "Gbuffer Pass");
 
-        FrustumVolume volume = FrustumVolume::FromMatrix(camera->GetProjectionMatrix() * camera->GetLocalSpaceMatrix());
+        FrustumVolume volume = FrustumVolume::FromMatrix(context->Camera->GetProjectionMatrix() * context->Camera->GetLocalSpaceMatrix());
 
         mCullingStatus = {};
-        scene->CullModel(volume,
+        context->Scene->CullModel(volume,
             [&](SceneModel* model)
             {
-                DrawModel(cmd, model);
+                DrawModel(context->CommandList, model);
             }
         );
 
-        mCullingStatus.NumCulled = scene->GetMeshCount() - mCullingStatus.NumDrawCall;
+        mCullingStatus.NumCulled = context->Scene->GetMeshCount() - mCullingStatus.NumDrawCall;
     }
 
     void GBufferPass::DrawModel(D3D12CommandList* cmd, SceneModel* obj)
@@ -169,7 +176,7 @@ namespace MRenderer
             cmd->SetGrphicsConstant(EConstantBufferType_Instance, obj->GetConstantBuffer()->GetCurrendConstantBufferView());
 
             // setup PSO
-            cmd->SetGraphicsPipelineState(mesh->GetVertexFormat(), &mPipelineStateDesc, GetPassStateDesc(), shading_state->GetShader());
+            cmd->SetGraphicsPipelineState(mesh->GetVertexFormat(), &mPipelineStateDesc, &mPassPsoDesc, shading_state->GetShader());
             
             // issue drawcall
             const SubMeshData& sub_mesh = mesh->GetSubMeshes()[i];
@@ -177,178 +184,169 @@ namespace MRenderer
         }
     }
 
-    void DeferredShadingPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    void DeferredShadingPass::Execute(FGContext* context)
     {
-        PIXScope(cmd, "Deferred Shading");
+        PIXScope(context->CommandList, "Deferred Shading");
 
         // bind pass input to shader
-        mShadingState.SetTexture(DeferredShadingShader::GBufferA, dynamic_cast<DeviceTexture*>(mGBufferA->GetResource()));
-        mShadingState.SetTexture(DeferredShadingShader::GBufferB, dynamic_cast<DeviceTexture*>(mGBufferB->GetResource()));
-        mShadingState.SetTexture(DeferredShadingShader::GBufferC, dynamic_cast<DeviceTexture*>(mGBufferC->GetResource()));
-        mShadingState.SetTexture(DeferredShadingShader::PrefilterEnvMap, dynamic_cast<DeviceTexture*>(mPrefilterEnvMap->GetResource()));
-        mShadingState.SetTexture(DeferredShadingShader::PrecomputeBRDF, dynamic_cast<DeviceTexture*>(mPrecomputeBRDF->GetResource()));
+        mShadingState.SetTexture(DeferredShadingShader::GBufferA, dynamic_cast<DeviceTexture*>(GetTransientResource(context, DeferredPipelineResource::GBufferA)));
+        mShadingState.SetTexture(DeferredShadingShader::GBufferB, dynamic_cast<DeviceTexture*>(GetTransientResource(context, DeferredPipelineResource::GBufferB)));
+        mShadingState.SetTexture(DeferredShadingShader::GBufferC, dynamic_cast<DeviceTexture*>(GetTransientResource(context, DeferredPipelineResource::GBufferC)));
+        mShadingState.SetTexture(DeferredShadingShader::PrefilterEnvMap, dynamic_cast<DeviceTexture*>(GetTransientResource(context, DeferredPipelineResource::PrefilterEnvMap)));
+        mShadingState.SetTexture(DeferredShadingShader::PrecomputeBRDF, dynamic_cast<DeviceTexture*>(GetTransientResource(context, DeferredPipelineResource::PrecomputeBRDF)));
+        mShadingState.SetTexture(DeferredShadingShader::DepthStencil, dynamic_cast<DeviceTexture*>(GetTransientResource(context, DeferredPipelineResource::DepthStencil)));
+
+        mShadingState.SetStructuredBuffer(DeferredShadingShader::Clusters, dynamic_cast<DeviceStructuredBuffer*>(GetTransientResource(context, DeferredPipelineResource::FrustumCluster)));
+        mShadingState.SetStructuredBuffer(DeferredShadingShader::PointLights, dynamic_cast<DeviceStructuredBuffer*>(GetTransientResource(context, DeferredPipelineResource::PointLights)));
 
         // setup pso
-        cmd->SetStencilRef(0);
-        cmd->SetGraphicsPipelineState(EVertexFormat_P3F_T2F, &mPipelineStateDesc, GetPassStateDesc(), mShadingState.GetShader());
-        cmd->DrawScreen(&mShadingState);
+        context->CommandList->SetStencilRef(0);
+        context->CommandList->SetGraphicsPipelineState(EVertexFormat_P3F_T2F, &mPipelineStateDesc, &mPassPsoDesc, mShadingState.GetShader());
+        context->CommandList->DrawScreen(&mShadingState);
     }
 
-    ClusteredPass::ClusteredPass()
-        :mClusterReady(false)
+    void ClusteredPass::Execute(FGContext* context)
     {
-        // prepare shader
-        mClusterCompute.SetShader("clustered_compute.hlsl", true);
-        mClusterCulling.SetShader("clustered_culling.hlsl", true);
-
-        // allocate structured buffer
-        uint32 cluster_size = ClusterSizeX * ClusterSizeY * ClusterSizeZ * sizeof(Cluster);
-        mStructuredBufferCluster = GD3D12Device->CreateStructuredBuffer(cluster_size, sizeof(Cluster));
-
-        uint32 point_light_size = NumLights * sizeof(PointLight);
-        mStructuredBufferPointLight = GD3D12Device->CreateStructuredBuffer(point_light_size, sizeof(Cluster));
-
-        // bind structured buffer to shader
-        mClusterCompute.SetRWStructuredBuffer("Cluster", mStructuredBufferCluster.get());
-        mClusterCompute.SetStructuredBuffer("PointLights", mStructuredBufferPointLight.get());
-        mClusterCulling.SetRWStructuredBuffer("Cluster", mStructuredBufferCluster.get());
-        mClusterCulling.SetStructuredBuffer("PointLights", mStructuredBufferPointLight.get());
-    }
-
-    void ClusteredPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
-    {
-        // set shader constant buffer
-        ShaderConstant cbuffer
         {
-            .ClusterX = ClusterSizeX,
-            .ClusterY = ClusterSizeY,
-            .ClusterZ = ClusterSizeZ,
-            .NumLight = static_cast<int>(scene->GetLightCount())
-        };
-        mClusterCompute.SetConstantBuffer(cbuffer);
+            PIXScope(context->CommandList, "Clustered Pass");
 
-        // calculate AABB of each cluster, we only need to do this once
-        if (!mClusterReady) 
-        {
-            cmd->Dispatch(&mClusterCompute, ClusterSizeX, ClusterSizeY, ClusterSizeZ);
-        }
+            // bind structured buffer to shader
+            DeviceStructuredBuffer* sw_cluster = dynamic_cast<DeviceStructuredBuffer*>(GetTransientResource(context, DeferredPipelineResource::FrustumCluster));
+            DeviceStructuredBuffer* sw_point_light = dynamic_cast<DeviceStructuredBuffer*>(GetTransientResource(context, DeferredPipelineResource::PointLights));
 
-        // commit lights data
-        std::array<PointLight, NumLights> lights;
-        ASSERT(scene->GetLightCount() <= NumLights);
+            mClusteredCompute.SetRWStructuredBuffer(ClusteredComputeShader::Clusters, sw_cluster);
+            mClusteredCulling.SetRWStructuredBuffer(ClusteredCullingShader::Clusters, sw_cluster);
+            mClusteredCulling.SetRWStructuredBuffer(ClusteredCullingShader::PointLights, sw_point_light);
 
-        FrustumVolume volume = FrustumVolume::FromMatrix(camera->GetProjectionMatrix() * camera->GetLocalSpaceMatrix());
+            // frustum culling point lights
+            ASSERT(context->Scene->GetLightCount() <= MaxSceneLights);
 
-        int i = 0;
-        scene->CullLight(volume,
-            [&](SceneLight* light)
-            {
-                lights[i++] = PointLight
+            FrustumVolume volume = FrustumVolume::FromMatrix(context->Camera->GetProjectionMatrix() * context->Camera->GetLocalSpaceMatrix());
+            std::array<PointLight, MaxSceneLights> lights;
+
+            int i = 0;
+            context->Scene->CullLight(volume,
+                [&](SceneLight* light)
                 {
-                    .Position = light->GetTranslation(),
-                    .Radius = light->GetRadius(),
-                    .Color = light->GetColor(),
-                    .Intensity = light->GetIntensity()
-                };
-            }
-        );
+                    lights[i++] = PointLight
+                    {
+                        .Position = light->GetTranslation(),
+                        .Radius = light->GetRadius(),
+                        .Color = light->GetColor(),
+                        .Intensity = light->GetIntensity()
+                    };
+                }
+            );
 
-        mStructuredBufferPointLight->Commit(&lights, sizeof(lights));
+            // set shader constant buffer
+            ClusteredComputeShader::ShaderConstant cbuffer
+            {
+                .NumLight = i
+            };
+            mClusteredCompute.SetConstantBuffer(cbuffer);
+            mClusteredCulling.SetConstantBuffer(cbuffer);
 
-        // calculate the lights that intersect with each cluster
-        cmd->Dispatch(&mClusterCulling, ClusterSizeX, ClusterSizeY, ClusterSizeZ);
+            // commit lights data
+            sw_point_light->Commit(&lights, sizeof(lights));
+
+            // calculate AABB of each cluster
+            context->CommandList->Dispatch(&mClusteredCompute, 1, 1, 1);
+
+            // calculate the lights that intersect with each cluster
+            context->CommandList->Dispatch(&mClusteredCulling, 1, 1, 1);
+        }
     }
     
-    void ToneMappingPass::Connect(BloomPass* bloom_pass)
+    void AutoExposurePass::Execute(FGContext* context)
     {
-        mLuminanceTexture = SampleTexture(bloom_pass, BloomPass::Output_LuminanceTeture);
-        WriteRenderTarget(ToneMappingPass::Output_ToneMappingRT, TextureFormatKey(GD3D12Device->Width(), GD3D12Device->Height(), ETextureFormat_R8G8B8A8_UNORM));
+        PIXScope(context->CommandList, "Auto Exposure Pass");
 
-        mLuminanceHistogramCompute.SetShader("hdr_luminance_histogram.hlsl", true);
-        mAvarageLuminanceCompute.SetShader("hdr_average_histogram.hlsl", true);
-        mToneMappingRender.SetShader("hdr_tone_mapping.hlsl", false);
-    }
+        DeviceTexture2D* input_tex = dynamic_cast<DeviceTexture2D*>(GetTransientResource(context, DeferredPipelineResource::DeferredShadingRT));
+        DeviceStructuredBuffer* histogram = dynamic_cast<DeviceStructuredBuffer*>(GetTransientResource(context, DeferredPipelineResource::LuminanceHistogram));
+        DeviceStructuredBuffer* avg_luminance = dynamic_cast<DeviceStructuredBuffer*>(GetTransientResource(context, DeferredPipelineResource::AverageLuminance));
 
-    void ToneMappingPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
-    {
-        PIXScope(cmd, "Auto Exposure Pass");
-        uint32 tex_width = mLuminanceTexture->GetTextureFormatKey().Info.Width;
-        uint32 tex_height = mLuminanceTexture->GetTextureFormatKey().Info.Height;
+        if (!mAvarageLuminanceInitialized)
+        {
+            mAvarageLuminanceInitialized = true;
+
+            int value = 0;
+            avg_luminance->Commit(&value, sizeof(float));
+        }
 
         {
-            PIXScope(cmd, "Luminance Histogram Pass");
+            PIXScope(context->CommandList, "Luminance Histogram Pass");
 
-            mLuminanceHistogram->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            histogram->Resource()->TransitionBarrier(context->CommandList->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-            mLuminanceHistogramCompute.SetRWStructuredBuffer("LuminanceHistogram", mLuminanceHistogram.get());
-            mLuminanceHistogramCompute.SetTexture(LuminanceHistogramShader::LuminanceTexture, dynamic_cast<DeviceTexture*>(mLuminanceTexture->GetResource()));
-            mLuminanceHistogramCompute.SetConstantBuffer(LuminanceHistogramShader::ConstantBuffer
+            mLuminanceHistogramCompute.SetRWStructuredBuffer(LuminanceHistogramShader::LuminanceHistogram, histogram);
+            mLuminanceHistogramCompute.SetTexture(LuminanceHistogramShader::LuminanceTexture, input_tex);
+            mLuminanceHistogramCompute.SetConstantBuffer
+            (
+                LuminanceHistogramShader::ConstantBuffer
                 {
-                    .TextureWidth = tex_width,
-                    .TextureHeight = tex_height,
+                    .TextureWidth = input_tex->Width(),
+                    .TextureHeight = input_tex->Height(),
                     .MinLogLuminance = MinLogLuminance,
                     .InvLogLuminanceRange = InvLogLuminanceRange,
                 }
             );
 
-            uint32 dispatch_size_x = CalculateDispatchSize(tex_width, HistogramComputeThreadGroupSize);
-            uint32 dispatch_size_y = CalculateDispatchSize(tex_height, HistogramComputeThreadGroupSize);
+            uint32 dispatch_size_x = CalculateDispatchSize(input_tex->Width(), HistogramComputeThreadGroupSize);
+            uint32 dispatch_size_y = CalculateDispatchSize(input_tex->Height(), HistogramComputeThreadGroupSize);
 
-
-            static bool once = false;
-            if (!once) 
-            {
-                //once = true;
-                cmd->Dispatch(&mLuminanceHistogramCompute, dispatch_size_x, dispatch_size_y, 1);
-            }
+            context->CommandList->Dispatch(&mLuminanceHistogramCompute, dispatch_size_x, dispatch_size_y, 1);
         }
 
         {
-            PIXScope(cmd, "Average Luminance Pass");
+            PIXScope(context->CommandList, "Average Luminance Pass");
 
-            mLuminanceHistogram->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            mAverageLuminance->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            histogram->Resource()->TransitionBarrier(context->CommandList->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            avg_luminance->Resource()->TransitionBarrier(context->CommandList->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-            mAvarageLuminanceCompute.SetRWStructuredBuffer(AverageLuminanceShader::LuminanceHistogram, mLuminanceHistogram.get());
-            mAvarageLuminanceCompute.SetRWStructuredBuffer(AverageLuminanceShader::AverageLuminance, mAverageLuminance.get());
+            mAvarageLuminanceCompute.SetRWStructuredBuffer(AverageLuminanceShader::LuminanceHistogram, histogram);
+            mAvarageLuminanceCompute.SetRWStructuredBuffer(AverageLuminanceShader::AverageLuminance, avg_luminance);
             mAvarageLuminanceCompute.SetConstantBuffer(AverageLuminanceShader::ConstantBuffer
                 {
-                    .PixelCount = tex_width * tex_height,
+                    .PixelCount = input_tex->Width() * input_tex->Height(),
                     .MinLogLuminance = MinLogLuminance,
                     .LogLuminanceRange = LogLuminanceRange,
                 }
-            );
+                );
 
-            cmd->Dispatch(&mAvarageLuminanceCompute, 1, 1, 1);
-        }
-
-        {
-            PIXScope(cmd, "Tone Mapping Pass");
-
-            mAverageLuminance->Resource()->TransitionBarrier(cmd->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-            mToneMappingRender.SetRWStructuredBuffer(ToneMappingShader::AverageLuminance, mAverageLuminance.get());
-            mToneMappingRender.SetTexture(LuminanceHistogramShader::LuminanceTexture, dynamic_cast<DeviceTexture*>(mLuminanceTexture->GetResource()));
-
-            PipelineStateDesc pso_desc = PipelineStateDesc::DrawScreen();
-            cmd->SetGraphicsPipelineState(EVertexFormat_P3F_T2F, &pso_desc, GetPassStateDesc(), mToneMappingRender.GetShader());
-            cmd->DrawScreen(&mToneMappingRender);
+            context->CommandList->Dispatch(&mAvarageLuminanceCompute, 1, 1, 1);
         }
     }
 
-    void PresentPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    void ToneMappingPass::Execute(FGContext* context)
     {
-        ASSERT(mInputTexture);
+        PIXScope(context->CommandList, "Tone Mapping Pass");
 
-        DeviceTexture2D* rt = dynamic_cast<DeviceTexture2D*>(mInputTexture->GetResource());
-        ASSERT(rt);
+        DeviceTexture2D* input_tex = dynamic_cast<DeviceTexture2D*>(GetTransientResource(context, DeferredPipelineResource::DeferredShadingRT));
+        DeviceStructuredBuffer* avg_luminance = dynamic_cast<DeviceStructuredBuffer*>(GetTransientResource(context, DeferredPipelineResource::AverageLuminance));
 
-        cmd->Present(rt);
+        avg_luminance->Resource()->TransitionBarrier(context->CommandList->GetCommandList(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+        mToneMappingRender.SetRWStructuredBuffer(ToneMappingShader::AverageLuminance, avg_luminance);
+        mToneMappingRender.SetTexture(ToneMappingShader::LuminanceTexture, input_tex);
+
+        PipelineStateDesc pso_desc = PipelineStateDesc::DrawScreen();
+        context->CommandList->SetGraphicsPipelineState(EVertexFormat_P3F_T2F, &pso_desc, &mPassPsoDesc, mToneMappingRender.GetShader());
+        context->CommandList->DrawScreen(&mToneMappingRender);
+
     }
 
     BloomPass::BloomPass()
-        :mInputTexture(nullptr)
     {
+        // declare pass input output
+        const FGTransientTextureDescription& tex_desc = FGResourceDescriptionTable::Instance()->GetTransientTexture(DeferredPipelineResource::DeferredShadingRT);
+
+        ASSERT(BloomStep < CalculateMaxMipLevels(tex_desc.Info.Width, tex_desc.Info.Height));
+
+        WriteTransientTexture(DeferredPipelineResource::BloomMipchain, tex_desc.Info.Width, tex_desc.Info.Height, MipmapLevel, tex_desc.Info.Format, ETexture2DFlag_AllowUnorderedAccess);
+        WriteTransientTexture(DeferredPipelineResource::BloomTempTexture, tex_desc.Info.Width, tex_desc.Info.Height, MipmapLevel, tex_desc.Info.Format, ETexture2DFlag_AllowUnorderedAccess);
+        WriteResource(DeferredPipelineResource::DeferredShadingRT);
+
+        // initialize shading state
         mPrefilter.SetShader(PrefilterShader::ShaderFile, true);
         mUpsampleBlurH.SetShader(BlurHorizontal::ShaderFile, true);
         mUpsampleBlurV.SetShader(BlurVerticalShader::ShaderFile, true);
@@ -398,17 +396,20 @@ namespace MRenderer
 
     // A and B are intermediate textures, S is the original texture. they all are the same size except A and B have mipmap
     // Prefilter is for extract highlight area and fighting fireflies. DownsampleX and UpsampleX are guassian filters that are split into horizontal and vertical parts.
-    // 1 step meas a horizontal and a vertical process, example above has 2 steps, and the mipmap level equal steps + 2 which is 4.
-    void BloomPass::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
+    // 1 step meas a horizontal and a vertical process, example above has 2 steps, and the mipmap level equal steps + 1 + Prefilter step, which is 4.
+    void BloomPass::Execute(FGContext* context)
     {
-        PIXScope(cmd, "Bloom Pass");
+        PIXScope(context->CommandList, "Bloom Pass");
 
-        DeviceTexture2D* original_tex = dynamic_cast<DeviceTexture2D*>(mInputTexture->GetResource());
+        DeviceTexture2D* original_tex = dynamic_cast<DeviceTexture2D*>(GetTransientResource(context, DeferredPipelineResource::DeferredShadingRT));
+        DeviceTexture2D* mip_chain = dynamic_cast<DeviceTexture2D*>(GetTransientResource(context, DeferredPipelineResource::BloomMipchain));
+        DeviceTexture2D* temp_tex = dynamic_cast<DeviceTexture2D*>(GetTransientResource(context, DeferredPipelineResource::BloomTempTexture));
+
         ASSERT(original_tex);
 
         // bloom prefilter
         {
-            PIXScope(cmd, "Bloom Prefilter");
+            PIXScope(context->CommandList, "Bloom Prefilter");
 
             mPrefilter.SetConstantBuffer
             (
@@ -421,21 +422,21 @@ namespace MRenderer
             );
 
             mPrefilter.SetTexture(PrefilterShader::InputTexture, original_tex);
-            mPrefilter.SetRWTexture(PrefilterShader::OutputTexture, mMipchain.get(), 1);
-            cmd->Dispatch(&mPrefilter, CalculateDispatchSize(mMipchain->Width(), PrefilterShader::ThreadGroupSizeX), CalculateDispatchSize(mMipchain->Height(), PrefilterShader::ThreadGroupSizeY), 1);
+            mPrefilter.SetRWTexture(PrefilterShader::OutputTexture, mip_chain, 1);
+            context->CommandList->Dispatch(&mPrefilter, CalculateDispatchSize(temp_tex->Width(), PrefilterShader::ThreadGroupSizeX), CalculateDispatchSize(temp_tex->Height(), PrefilterShader::ThreadGroupSizeY), 1);
         }
 
         {
-            PIXScope(cmd, "Bloom Downsample");
+            PIXScope(context->CommandList, "Bloom Downsample");
             // bloom downsample
             for (int i = 0; i < BloomStep; i++)
             {
                 uint32 upper_mip_level = i + 1;
-                int32 lower_mip_width = mTempTexture->Width() >> (upper_mip_level + 1);
-                int32 lower_mip_height = mTempTexture->Height() >> (upper_mip_level + 1);
+                int32 lower_mip_width = temp_tex->Width() >> (upper_mip_level + 1);
+                int32 lower_mip_height = temp_tex->Height() >> (upper_mip_level + 1);
 
                 {
-                    PIXScope(cmd, "Blur Horizontal");
+                    PIXScope(context->CommandList, "Blur Horizontal");
 
                     // use gaussian filter for downsampling
                     mDownsampleH[i].SetConstantBuffer
@@ -447,13 +448,13 @@ namespace MRenderer
                     );
 
                     // horizontal blur
-                    mDownsampleH[i].SetTexture(BlurHorizontal::InputTexture, mMipchain.get(), upper_mip_level);
-                    mDownsampleH[i].SetRWTexture(BlurHorizontal::OutputTexture, mTempTexture.get(), upper_mip_level + 1);
-                    cmd->Dispatch(&mDownsampleH[i], CalculateDispatchSize(lower_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
+                    mDownsampleH[i].SetTexture(BlurHorizontal::InputTexture, temp_tex, upper_mip_level);
+                    mDownsampleH[i].SetRWTexture(BlurHorizontal::OutputTexture, temp_tex, upper_mip_level + 1);
+                    context->CommandList->Dispatch(&mDownsampleH[i], CalculateDispatchSize(lower_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
                 }
 
                 {
-                    PIXScope(cmd, "Blur Vertical");
+                    PIXScope(context->CommandList, "Blur Vertical");
                     mDownsampleV[i].SetConstantBuffer(BlurVerticalShader::ConstantBuffer
                         {
                             .TexelSize = Vector2(1.0f / lower_mip_width, 1.0f / lower_mip_height),
@@ -461,15 +462,15 @@ namespace MRenderer
                     );
 
                     // vertical blur
-                    mDownsampleV[i].SetTexture(BlurVerticalShader::InputTexture, mTempTexture.get(), i + 2);
-                    mDownsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, mMipchain.get(), i + 2);
-                    cmd->Dispatch(&mDownsampleV[i], CalculateDispatchSize(lower_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
+                    mDownsampleV[i].SetTexture(BlurVerticalShader::InputTexture, temp_tex, i + 2);
+                    mDownsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, temp_tex, i + 2);
+                    context->CommandList->Dispatch(&mDownsampleV[i], CalculateDispatchSize(lower_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
                 }
             }
         }
 
         {
-            PIXScope(cmd, "Bloom Upsample");
+            PIXScope(context->CommandList, "Bloom Upsample");
 
             // guassain filter upper level and lower level and add them together
             // let 2d gaussain filter to be S, and 1d horizontal and vertical gaussian filter to be H and V
@@ -477,11 +478,11 @@ namespace MRenderer
             for (int i = BloomStep - 1; i >= 0; i--)
             {
                 int32 upper_mip_level = i + 1;
-                int32 upper_mip_width = mTempTexture->Width() >> upper_mip_level;
-                int32 upper_mip_height = mTempTexture->Height() >> upper_mip_level;
+                int32 upper_mip_width = temp_tex->Width() >> upper_mip_level;
+                int32 upper_mip_height = temp_tex->Height() >> upper_mip_level;
 
                 {
-                    PIXScope(cmd, "Upsample Horizontal Add");
+                    PIXScope(context->CommandList, "Upsample Horizontal Add");
 
                     // H(t1) + H(t2)
                     mUpsampleH[i].SetConstantBuffer
@@ -492,14 +493,14 @@ namespace MRenderer
                         }
                     );
 
-                    mUpsampleH[i].SetTexture(UpsampleAddShader::UpperLevel, mMipchain.get(), upper_mip_level);
-                    mUpsampleH[i].SetTexture(UpsampleAddShader::LowerLevel, mMipchain.get(), upper_mip_level + 1);
-                    mUpsampleH[i].SetRWTexture(UpsampleAddShader::OutputTexture, mTempTexture.get(), i + 1);
-                    cmd->Dispatch(&mUpsampleH[i], CalculateDispatchSize(upper_mip_width, UpsampleAddShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, UpsampleAddShader::ThreadGroupSizeY), 1);
+                    mUpsampleH[i].SetTexture(UpsampleAddShader::UpperLevel, temp_tex, upper_mip_level);
+                    mUpsampleH[i].SetTexture(UpsampleAddShader::LowerLevel, temp_tex, upper_mip_level + 1);
+                    mUpsampleH[i].SetRWTexture(UpsampleAddShader::OutputTexture, temp_tex, i + 1);
+                    context->CommandList->Dispatch(&mUpsampleH[i], CalculateDispatchSize(upper_mip_width, UpsampleAddShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, UpsampleAddShader::ThreadGroupSizeY), 1);
                 }
 
                 {
-                    PIXScope(cmd, "Blur Vertical");
+                    PIXScope(context->CommandList, "Blur Vertical");
                     mUpsampleV[i].SetConstantBuffer
                     (
                         BlurVerticalShader::ConstantBuffer
@@ -509,23 +510,23 @@ namespace MRenderer
                     );
 
                     // V(t)
-                    mUpsampleV[i].SetTexture(BlurVerticalShader::InputTexture, mTempTexture.get(), upper_mip_level);
-                    mUpsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, mMipchain.get(), upper_mip_level);
-                    cmd->Dispatch(&mUpsampleV[i], CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
+                    mUpsampleV[i].SetTexture(BlurVerticalShader::InputTexture, temp_tex, upper_mip_level);
+                    mUpsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, temp_tex, upper_mip_level);
+                    context->CommandList->Dispatch(&mUpsampleV[i], CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
                 }
             }
         }
 
         {
-            PIXScope(cmd, "Upsample Merge");
+            PIXScope(context->CommandList, "Upsample Merge");
             // merge the blurred texture with the original texture
             // simply gaussain filter upsample and add the original texture
 
-            uint32 upper_mip_width = mMipchain->Width();
-            uint32 upper_mip_height = mMipchain->Height();
+            uint32 upper_mip_width = temp_tex->Width();
+            uint32 upper_mip_height = temp_tex->Height();
 
             {
-                PIXScope(cmd, "Blur Horizontal");
+                PIXScope(context->CommandList, "Blur Horizontal");
 
                 mUpsampleBlurH.SetConstantBuffer
                 (
@@ -535,13 +536,13 @@ namespace MRenderer
                     }
                 );
 
-                mUpsampleBlurH.SetTexture(BlurHorizontal::InputTexture, mMipchain.get(), 1);
-                mUpsampleBlurH.SetRWTexture(BlurHorizontal::OutputTexture, mTempTexture.get(), 0);
-                cmd->Dispatch(&mUpsampleBlurH, CalculateDispatchSize(upper_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
+                mUpsampleBlurH.SetTexture(BlurHorizontal::InputTexture, temp_tex, 1);
+                mUpsampleBlurH.SetRWTexture(BlurHorizontal::OutputTexture, temp_tex, 0);
+                context->CommandList->Dispatch(&mUpsampleBlurH, CalculateDispatchSize(upper_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
             }
 
             {
-                PIXScope(cmd, "Blur Vertical");
+                PIXScope(context->CommandList, "Blur Vertical");
                 mUpsampleBlurV.SetConstantBuffer
                 (
                     BlurVerticalShader::ConstantBuffer
@@ -551,18 +552,18 @@ namespace MRenderer
                 );
 
                 // vertical blur
-                mUpsampleBlurV.SetTexture(BlurVerticalShader::InputTexture, mTempTexture.get(), 0);
-                mUpsampleBlurV.SetRWTexture(BlurVerticalShader::OutputTexture, mMipchain.get(), 0);
-                cmd->Dispatch(&mUpsampleBlurV, CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
+                mUpsampleBlurV.SetTexture(BlurVerticalShader::InputTexture, temp_tex, 0);
+                mUpsampleBlurV.SetRWTexture(BlurVerticalShader::OutputTexture, temp_tex, 0);
+                context->CommandList->Dispatch(&mUpsampleBlurV, CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
             }
 
             {
-                PIXScope(cmd, "Merge");
+                PIXScope(context->CommandList, "Merge");
 
                 // merge with original texture
                 mUpsampleMerge.SetTexture(MergeShader::InputTexture , original_tex, 0);
-                mUpsampleMerge.SetRWTexture(MergeShader::OutputTexture, mMipchain.get(), 0);
-                cmd->Dispatch(&mUpsampleMerge, CalculateDispatchSize(original_tex->Width(), MergeShader::ThreadGroupSizeX), CalculateDispatchSize(original_tex->Height(), MergeShader::ThreadGroupSizeY), 1);
+                mUpsampleMerge.SetRWTexture(MergeShader::OutputTexture, temp_tex, 0);
+                context->CommandList->Dispatch(&mUpsampleMerge, CalculateDispatchSize(original_tex->Width(), MergeShader::ThreadGroupSizeX), CalculateDispatchSize(original_tex->Height(), MergeShader::ThreadGroupSizeY), 1);
             }
         }
     }

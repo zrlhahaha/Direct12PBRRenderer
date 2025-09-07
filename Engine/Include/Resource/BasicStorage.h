@@ -55,7 +55,7 @@ namespace MRenderer
             return static_cast<const uint8*>(mData) + offset;
         }
 
-        friend void Swap(BinaryData& lhs, BinaryData& rhs)
+        friend void swap(BinaryData& lhs, BinaryData& rhs)
         {
             using std::swap;
 
@@ -164,7 +164,7 @@ namespace MRenderer
             return mBound;
         }
 
-        friend void Swap(MeshData& lhs, MeshData& rhs)
+        friend void swap(MeshData& lhs, MeshData& rhs)
         {
             using std::swap;
             swap(lhs.mVertexFormat, rhs.mVertexFormat);
@@ -287,9 +287,9 @@ namespace MRenderer
         // set pixel on (u, v)
         void SetPixel(uint32 u, uint32 v, const Vector4& color);
 
-        friend void Swap(TextureData& lhs, TextureData& rhs)
+        friend void swap(TextureData& lhs, TextureData& rhs)
         {
-            Swap(lhs.mData, rhs.mData);
+            swap(lhs.mData, rhs.mData);
             std::swap(lhs.mInfo, rhs.mInfo);
         }
 

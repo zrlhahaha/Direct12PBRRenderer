@@ -2,25 +2,47 @@
 #include <stack>
 #include "Renderer/Pipeline/IPipeline.h"
 #include "Renderer/Device/Direct12/DeviceResource.h"
-#include "Renderer/Device/Direct12/MemoryAllocator.h"
 
 namespace MRenderer 
 {
-    class RTHandle 
+    class FGExecutionParser 
     {
+    protected:
+        struct Node
+        {
+            IRenderPass* Pass;
+            std::vector<Node*> InputNodes;
+            std::vector<Node*> OutputNodes;
+
+            bool Visited;
+            uint32 RefCount;
+        };
+
+        struct FGResourceLifecycle
+        {
+            FGResourceId ResourceId;
+            uint32 StartPass;
+            uint32 EndPass;
+            bool Valid; // is this transient resource ever used
+        };
+
     public:
+        inline const std::vector<IRenderPass*>& GetExecutionOrder() const { return mExecutionOrder; }
+        inline const std::vector<FGResourceLifecycle>& GetResourceLifecycle() const { return mResourceLifecycle; }
+
+        void Parse(std::vector<IRenderPass*> passes, IRenderPass* present_pass);
+        bool IsDependsOn(const IRenderPass* lhs, const IRenderPass* rhs);
 
     protected:
-        AllocationDesc mDesc;
-        std::string mName;
-        IDeviceResource* mResource;
+        std::vector<IRenderPass*> mExecutionOrder;
+        std::vector<FGResourceLifecycle> mResourceLifecycle;
     };
 
     class FrameGraph 
     {
     public:
         FrameGraph(IRenderPipeline* pipeline)  
-            : mRenderPipeline(pipeline), mHeap(GD3D12RawDevice)
+            : mRenderPipeline(pipeline), mExecutionPass(0)
         {
         }
 
@@ -37,23 +59,19 @@ namespace MRenderer
         void Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera);
 
         IRenderPipeline* GetPipeline() const{ return mRenderPipeline;}
-        const std::vector<IRenderPass*>& GetPassOrder() const{ return mPassOrder;}
+        IDeviceResource* GetFGResource(IRenderPass* pass, FGResourceId id);
 
     protected:
-
-
-
-    protected:
-        void IncreseRef(RenderPassNode* node);
-        void DecreseRef(RenderPassNode* node);
-        void CleanUp();
-        std::vector<IRenderPass*> CollectPassDependency(IRenderPass* pass);
-        void PreparePass(D3D12CommandList* cmd, IRenderPass* pass);
+        void PreparePass(D3D12CommandList* cmd, uint32 pass_index);
+        void GeneratePassPSO(GraphicsPass* pass);
 
     protected:
-        std::vector<IRenderPass*> mPassOrder;
+        FGExecutionParser mParser;
+        FGResourceAllocator mFGResourceAllocator;
 
-        D3D12Memory::MultiHeapMemoryAllocator mHeap;
+        std::vector<IRenderPass*> mPipelinePasses;
         IRenderPipeline* mRenderPipeline;
+
+        uint32 mExecutionPass;
     };
 }

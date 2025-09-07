@@ -7,289 +7,306 @@ namespace MRenderer
     // todo: frame allocator and custom allocator for std container
     void FrameGraph::Setup()
     {
-        // connect passes
-        mRenderPipeline->Setup();
+        // create and connect passes 
+        mPipelinePasses = mRenderPipeline->Setup();
 
-        CleanUp();
-
-        // DFS from mPresentPass, collect all effective pass
-        std::stack<IRenderPass*> pass_stack;
-        std::vector<IRenderPass*> effective_pass;
-        pass_stack.push(mRenderPipeline->GetPresentPass());
-
-        while (!pass_stack.empty())
+        // generate render pass PSO description
+        for (IRenderPass* pass : mPipelinePasses)
         {
-            IRenderPass* pass = pass_stack.top();
-            pass_stack.pop();
+            GraphicsPass* graphics_pass = dynamic_cast<GraphicsPass*>(pass);
 
-            effective_pass.push_back(pass);
-            for (IRenderPass* pass : CollectPassDependency(pass)) 
-            {
-                if (!pass->mSearchVisited) 
-                {
-                    pass->mSearchVisited = true;
-                    pass_stack.push(pass);
-                }
+            if (!graphics_pass) // not for compute pass
+                continue;
 
-                pass->mRefCount++;
-            }
-        }
-
-        // get pass execution order by topology sort from effective pass
-        while (effective_pass.size() != mPassOrder.size())
-        {
-            size_t count = mPassOrder.size();
-
-            for (IRenderPass* pass : effective_pass)
-            {
-                if (!pass->mSortVisited && pass->mRefCount == 0) 
-                {
-                    pass->mSortVisited = true;
-                    mPassOrder.push_back(pass);
-
-                    for (IRenderPass* deps : CollectPassDependency(pass)) 
-                    {
-                        deps->mRefCount--;
-                    }
-                }
-            }
-
-            ASSERT(count != mPassOrder.size() && "Pass Mutual Referenced");
-        }
-
-        std::reverse(mPassOrder.begin(), mPassOrder.end());
-
-        // generate render pass state
-        for (IRenderPass* pass : mPassOrder)
-        {
-            pass->UpdatePassStateDesc();
+            GeneratePassPSO(graphics_pass);
         }
     }
     
     void FrameGraph::Compile()
     {
-        // add reference count if RenderPassResource is referenced by other pass
-        for (IRenderPass* pass : mPassOrder)
+        // determine pass execution order and transient resource lifecycle
+        mParser.Parse(mPipelinePasses, mRenderPipeline->mPresentPass.get());
+
+        // create transient resource
+        mFGResourceAllocator.Reset();
+
+        for (auto& lifecycle : mParser.GetResourceLifecycle()) 
         {
-            for (RenderPassNode* input_node : pass->mInputNodes)
+            if (lifecycle.Valid) 
             {
-                IncreseRef(input_node);
-            }
-
-            for (auto& output_node : pass->mOutputNodes)
-            {
-                IncreseRef(output_node.get());
-            }
-        }
-
-        // calculate transient render target ID for each RenderPassResource
-        for (int pass_index = 0; pass_index < mPassOrder.size(); pass_index++)
-        {
-            IRenderPass* pass = mPassOrder[pass_index];
-
-            // assign transient RT for each output RTs
-            for (uint32 node_index = 0; node_index < pass->mOutputNodes.size(); node_index++)
-            {
-                RenderPassNode* res = pass->mOutputNodes[node_index].get();
-                if (res->Type == ERenderPassNodeType_Transient) 
-                {
-                    ASSERT(res->TransientResource.Resource == nullptr && res->TransientResource.RenderTargetKey != TextureFormatKey());
-
-                    uint32 index = mRenderTargetPool.Allocate(res->TransientResource.RenderTargetKey);
-                    res->TransientResource.Resource = mRenderTargetPool.GetResource(res->TransientResource.RenderTargetKey, index);
-                    res->TransientResource.Index = index;
-                }
-            }
-
-            // recycle transient RT for each output RTs if the are not referenced by other passes at all
-            for (uint32 node_index = 0; node_index < pass->mOutputNodes.size(); node_index++)
-            {
-                RenderPassNode* res = pass->mOutputNodes[node_index].get();
-                DecreseRef(res);
-            }
-
-            // recycle transient RT for input transient RTs if they are no longer being referenced
-            for (uint32 node_index = 0; node_index < pass->mInputNodes.size(); node_index++)
-            {
-                RenderPassNode* res = pass->mInputNodes[node_index];
-                DecreseRef(res);
+                mFGResourceAllocator.AllocateTransientResource(lifecycle.ResourceId);
             }
         }
     }
 
     void FrameGraph::Execute(D3D12CommandList* cmd, Scene* scene, Camera* camera)
     {
-        for (uint32 i = 0; i < mPassOrder.size(); i++)
+        FGContext context = 
         {
-            PreparePass(cmd, mPassOrder[i]);
-            mPassOrder[i]->Execute(cmd, scene, camera);
+            .CommandList = cmd,
+            .Scene = scene,
+            .Camera = camera,
+            .FrameGraph = this
+        };
+
+        // execute each pass accroding to the resource dependency order
+        const std::vector<IRenderPass*> execution_order = mParser.GetExecutionOrder();
+
+        for (mExecutionPass = 0; mExecutionPass < execution_order.size(); mExecutionPass++)
+        {
+            PreparePass(cmd, mExecutionPass);
+            execution_order[mExecutionPass]->Execute(&context);
         }
     }
 
-    void FrameGraph::PreparePass(D3D12CommandList* cmd, IRenderPass* pass)
+    IDeviceResource* FrameGraph::GetFGResource(IRenderPass* pass, FGResourceId id)
     {
-        // collect and clean up render target resource
-        const std::array<RenderPassNode*, MaxRenderTargets>& rt_nodes = pass->GetRenderTargetNodes();
-        std::array<RenderTargetView*, MaxRenderTargets> rtv_array = {};
-        for (uint32 i = 0; i < pass->GetRenderTargetsSize(); i++)
+        ASSERT(mParser.GetExecutionOrder()[mExecutionPass] == pass);
+        ASSERT
+        (
+            std::find(pass->GetInputResources().begin(), pass->GetInputResources().end(), id) != pass->GetInputResources().end() ||
+            std::find(pass->GetOutputResources().begin(), pass->GetOutputResources().end(), id) != pass->GetOutputResources().end()
+        );
+
+        Overload overloads
         {
-            DeviceTexture2D* rt = dynamic_cast<DeviceTexture2D*>(rt_nodes[i]->GetResource());
-            ASSERT(rt);
-
-            RenderTargetView* rtv = rtv_array[i] = rt->GetRenderTargetView();
-
-            // if it's the begining of a transient RT, clean it up first
-            if (rt_nodes[i]->GetActualPassNode()->Pass == pass)
+            [&](const FGTransientTextureDescription& res) -> IDeviceResource*
             {
-                cmd->ClearRenderTarget(rtv);
+                return mFGResourceAllocator.GetResource(id);
+            },
+            [&](const FGTransientBufferDescription& res) -> IDeviceResource*
+            {
+                return mFGResourceAllocator.GetResource(id);
+            },
+            [&](const FGPersistentResourceDescription& res) -> IDeviceResource*
+            {
+                return FGResourceDescriptionTable::Instance()->GetPersistentResource(id).Resource;
             }
-        }
+        };
 
-        // collect and clean up depth stencil resource
-        RenderPassNode* depth_stencil_node = pass->GetDepthStencil();
+        IDeviceResource* res = FGResourceDescriptionTable::Instance()->VisitResourceDescription(id, overloads);
+        ASSERT(res);
+
+        return res;
+    }
+
+    // clean up and bind render target
+    void FrameGraph::PreparePass(D3D12CommandList* cmd, uint32 pass_index)
+    {
+        GraphicsPass* pass = dynamic_cast<GraphicsPass*>(mParser.GetExecutionOrder()[pass_index]);
+
+        // ignore compute pass
+        if (!pass)
+            return;
+
         DepthStencilView* dsv = nullptr;
-        if (depth_stencil_node)
-        {
-            DeviceTexture2D* depth_stencil = dynamic_cast<DeviceTexture2D*>(depth_stencil_node->GetResource());
-            dsv = depth_stencil ? depth_stencil->GetDepthStencilView() : nullptr;
+        std::array<RenderTargetView*, MaxRenderTargets> rtv_array = {};
+        uint32 num_rts = 0;
 
-            // if it's the begining of a transient depth stencil, clean it up first
-            if (depth_stencil_node->GetActualPassNode()->Pass == pass)
+        for (FGResourceId res_id : pass->GetOutputResources())
+        {
+            DeviceTexture2D* texture = dynamic_cast<DeviceTexture2D*>(GetFGResource(pass, res_id));
+            ASSERT(texture);
+
+            bool begin_pass = mParser.GetResourceLifecycle()[res_id].StartPass == pass_index;
+
+            if (texture->TextureFlag() & ETexture2DFlag_AllowRenderTarget) 
             {
-                cmd->ClearDepthStencil(dsv);
-            }
-        }
+                // for rtv
+                ASSERT(num_rts <= rtv_array.size() && "render targetr exceeds the maximum limitation");
+                rtv_array[num_rts++] = texture->GetRenderTargetView();
 
-        // bind RTs and depth stencil
-        cmd->SetRenderTarget(rtv_array, pass->GetRenderTargetsSize(), dsv);
-    }
-
-    void FrameGraph::IncreseRef(RenderPassNode* node)
-    {
-        node = node->GetActualPassNode();
-        if (node->Type == ERenderPassNodeType_Transient)
-        {
-            node->RefCount += 1;
-        }
-    }
-
-    void FrameGraph::DecreseRef(RenderPassNode* node)
-    {
-        node = node->GetActualPassNode();
-        if (node->Type == ERenderPassNodeType_Transient)
-        {
-            if (--node->RefCount == 0)
-            {
-                ASSERT(node->TransientResource.Resource != nullptr);
-                mRenderTargetPool.Free(node->TransientResource.RenderTargetKey, node->TransientResource.Index);
-            }
-        }
-    }
-
-    void FrameGraph::CleanUp()
-    {
-        for (IRenderPass* pass : mPassOrder) 
-        {
-            pass->mSearchVisited = false;
-            pass->mSortVisited = false;
-            pass->mPassState = {};
-            pass->mRefCount = 0;
-
-            for (auto& node : pass->mOutputNodes) 
-            {
-                node->RefCount = 0;
-
-                if (node->Type == ERenderPassNodeType_Transient)
+                // clear rt if it's the beginning of it's lifecycle
+                if (begin_pass) 
                 {
-                    node->TransientResource.Resource = nullptr;
-                    node->TransientResource.Index = 0;
+                    cmd->ClearRenderTarget(texture->GetRenderTargetView());
+                }
+            }
+            else if (texture->TextureFlag() & ETexture2DFlag_AllowDepthStencil)
+            {
+                // for dsv
+                ASSERT(dsv == nullptr && "try to bind multiple depth stencil to one pass");
+                dsv = texture->GetDepthStencilView();
+
+                // clear rt if it's the beginning of it's lifecycle
+                if (begin_pass) 
+                {
+                    cmd->ClearDepthStencil(texture->GetDepthStencilView());
                 }
             }
         }
 
-        mPassOrder.clear();
-        mRenderTargetPool.Reset();
+        // bind RTs and depth stencil
+        cmd->SetRenderTarget(rtv_array, num_rts, dsv);
     }
 
-    std::vector<IRenderPass*> FrameGraph::CollectPassDependency(IRenderPass* pass)
+    void FrameGraph::GeneratePassPSO(GraphicsPass* pass)
     {
-        std::vector<IRenderPass*> deps;
+        GraphicsPassPsoDesc pso_desc = {};
 
-        // if pass A will sample pass B's RT, then pass B is referenced by pass A
-        for (RenderPassNode* input_node : pass->mInputNodes)
+        auto record_output = [&](ETextureFormat format, ETexture2DFlag flag)
         {
-            if (input_node->Pass)
+            // it's either a render target or depth stencil, d3d12 doesn't allow both exist.
+            if (flag & ETexture2DFlag::ETexture2DFlag_AllowRenderTarget)
             {
-                deps.push_back(input_node->Pass);
+                pso_desc.RenderTargetFormats[pso_desc.NumRenderTarget++] = format;
+            }
+            else if (flag & ETexture2DFlag::ETexture2DFlag_AllowDepthStencil)
+            {
+                ASSERT(pso_desc.DepthStencilFormat == ETextureFormat_None);
+                pso_desc.DepthStencilFormat = format;
+            }
+        };
+
+        Overload overloads 
+        (
+            [=](const FGTransientTextureDescription& desc)
+            {
+                record_output(desc.Info.Format, desc.Info.Flag);
+            },
+            [=](const FGPersistentResourceDescription& desc)
+            {
+                DeviceTexture2D* tex = dynamic_cast<DeviceTexture2D*>(desc.Resource);
+
+                if (tex)
+                {
+                    record_output(tex->Format(), tex->TextureFlag());
+                }
+            },
+            [](const FGTransientBufferDescription& desc) // warn: do not capture unused variable here, msvc bug will cause stack corruption
+            {
+                // graphics pass won't write to buffers
+                ASSERT(false);
+            }
+        );
+
+        for (FGResourceId output_res : pass->GetOutputResources())
+        {
+            FGResourceDescriptionTable::Instance()->VisitResourceDescription(output_res, overloads);
+        }
+
+        pass->SetPsoDesc(pso_desc);
+    }
+
+    void FGExecutionParser::Parse(std::vector<IRenderPass*> passes, IRenderPass* present_pass)
+    {
+        mExecutionOrder.clear();
+
+        // initialize nodes
+        Node* final_pass = nullptr;
+        std::vector<Node> nodes;
+        for (auto& pass : passes)
+        {
+            Node node = { .Pass = pass };
+            nodes.push_back(node);
+        }
+
+        // link nodes by resource dependency
+        for (Node& lhs : nodes)
+        {
+            for (Node& rhs : nodes)
+            {
+                if (IsDependsOn(lhs.Pass, rhs.Pass))
+                {
+                    rhs.RefCount++;
+                    lhs.InputNodes.push_back(&rhs);
+                    rhs.OutputNodes.push_back(&lhs);
+                }
+            }
+
+            if (lhs.Pass == present_pass)
+            {
+                final_pass = &lhs;
             }
         }
 
-        // if pass A will write to pass B's RT, then pass B is referenced by pass A
-        for (auto& output_node : pass->mOutputNodes)
+        ASSERT(final_pass && final_pass->RefCount == 0);
+
+        // find out execution order by topological sort
+        std::stack<Node*> dfs_stack;
+        dfs_stack.push(final_pass);
+
+        while (!dfs_stack.empty())
         {
-            if (output_node->Type == ERenderPassNodeType_Reference)
+            Node* node = dfs_stack.top();
+            dfs_stack.pop();
+
+            mExecutionOrder.push_back(node->Pass);
+
+            for (Node* dependency : node->InputNodes)
             {
-                RenderPassNode* node = output_node->PassNodeReference;
-                ASSERT(node->Pass);
-                deps.push_back(node->Pass);
+                dependency->RefCount -= 1;
+
+                if (!dependency->Visited && dependency->RefCount == 0)
+                {
+                    dependency->Visited = true;
+                    dfs_stack.push(dependency);
+                }
             }
         }
 
-        deps.erase(std::unique(deps.begin(), deps.end()), deps.end());
-        return deps;
-    }
+        ASSERT(passes.size() == mExecutionOrder.size() && "unused pass or circular reference is found in the frame graph");
 
-    uint32 TransientTexturePool::Allocate(TextureFormatKey key)
-    {
-        std::vector<Item>& items = mTransientResources[key];
+        std::reverse(mExecutionOrder.begin(), mExecutionOrder.end());
 
-        for (uint32 i = 0; i < items.size(); i++)
+        // determine transient resource lifecycle
+        mResourceLifecycle.resize(FGResourceIDs::Instance()->NumResources());
+        for (int32 i = 0; i < static_cast<int32>(FGResourceIDs::Instance()->NumResources()); i++)
         {
-            if (!items[i].Occupied)
+            mResourceLifecycle[i] = { .ResourceId = i, .Valid = false };
+        }
+
+        for (uint32 i = 0; i < mExecutionOrder.size(); i++) 
+        {
+            IRenderPass* pass = mExecutionOrder[i];
+
+            auto extend_lifecycle = [&](FGResourceId res)
             {
-                items[i].Occupied = true;
-                return static_cast<uint32>(mTransientResources[key].size() - 1);
+                auto& lifecycle = mResourceLifecycle[res];
+
+                if (lifecycle.Valid)
+                {
+                    lifecycle.StartPass = Min(lifecycle.StartPass, i);
+                    lifecycle.EndPass = Max(lifecycle.EndPass, i);
+                }
+                else
+                {
+                    lifecycle.Valid = true;
+                    lifecycle.StartPass = i;
+                    lifecycle.EndPass = i;
+                }
+            };
+
+            for (FGResourceId input_res : pass->GetInputResources()) 
+            {
+                extend_lifecycle(input_res);
             }
-        }
 
-        if (key.Info.Format != ETextureFormat_DepthStencil)
-        {
-            auto render_target = GD3D12Device->CreateTexture2D(key.Info.Width, key.Info.Height, 1, key.Info.Format, ETexture2DFlag_AllowRenderTarget);
-            size_t index = mTransientResources[key].size();
-            render_target->Resource()->SetName((std::wstring(L"TransientRenderTarget") + std::to_wstring(index)).data());
-
-            mTransientResources[key].emplace_back(true, render_target);
-            return static_cast<uint32>(index);
-        }
-        else
-        {
-            auto depth_stencil = GD3D12Device->CreateTexture2D(key.Info.Width, key.Info.Height, 1, ETextureFormat_None, ETexture2DFlag_AllowDepthStencil);
-            size_t index = mTransientResources[key].size();
-            depth_stencil->Resource()->SetName((std::wstring(L"TransientDepthStencil") + std::to_wstring(index)).data());
-
-            mTransientResources[key].emplace_back(true, depth_stencil);
-            return static_cast<uint32>(index);
-        }
-    }
-
-    void TransientTexturePool::Free(TextureFormatKey key, uint32 index)
-    {
-        mTransientResources[key][index].Occupied = false;
-    }
-
-    void TransientTexturePool::Reset()
-    {
-        for (auto& vec : mTransientResources)
-        {
-            for (auto& res : vec.second)
+            for (FGResourceId output_res : pass->GetOutputResources())
             {
-                res.Occupied = false;
+                extend_lifecycle(output_res);
             }
         }
     }
-
-    DeviceTexture2D* TransientTexturePool::GetResource(TextureFormatKey key, uint32 index)
+    
+    bool FGExecutionParser::IsDependsOn(const IRenderPass* lhs, const IRenderPass* rhs)
     {
-        return mTransientResources[key][index].Resource.get();
+        if (lhs == rhs)
+        {
+            return false;
+        }
+
+        for (const FGResourceId& input : lhs->GetInputResources())
+        {
+            for (const FGResourceId& output : rhs->GetOutputResources())
+            {
+                if (input == output)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

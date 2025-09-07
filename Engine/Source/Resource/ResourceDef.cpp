@@ -20,13 +20,13 @@ namespace MRenderer
         mSubMeshes = mesh_data.GetSubMeshs();
 
         VertexDefination layout = GetVertexLayout(mesh_data.Format());
-        mDeviceVertexBuffer = GD3D12Device->CreateVertexBuffer(
+        mDeviceVertexBuffer = GD3D12ResourceAllocator->CreateVertexBuffer(
             mesh_data.Vertices().GetData(),
             mesh_data.Vertices().GetSize(),
             layout.VertexSize
         );
 
-        mDeviceIndexBuffer = GD3D12Device->CreateIndexBuffer(
+        mDeviceIndexBuffer = GD3D12ResourceAllocator->CreateIndexBuffer(
             mesh_data.Indicies().GetData(),
             mesh_data.Indicies().GetSize()
         );
@@ -55,7 +55,7 @@ namespace MRenderer
         TextureData tex;
         ASSERT(ResourceLoader::Instance().LoadBinary(tex, mTexturePath));
 
-        mDeviceTexture = GD3D12Device->CreateTexture2D(
+        mDeviceTexture = GD3D12ResourceAllocator->CreateTexture2D(
             tex.Width(),
             tex.Height(),
             tex.MipLevels(),
@@ -206,7 +206,7 @@ namespace MRenderer
             pixels[i] = texture.Data()[i].Data();
         }
 
-        mDeviceTexture2DArray = GD3D12Device->CreateTextureCube(face0.Width(), face0.Height(), face0.MipLevels(), face0.Format(), false, face0.DataSize(), &pixels);
+        mDeviceTexture2DArray = GD3D12ResourceAllocator->CreateTextureCube(face0.Width(), face0.Height(), face0.MipLevels(), face0.Format(), false, face0.DataSize(), &pixels);
         mDeviceTexture2DArray->Resource()->SetName(L"CubeMap");
         mSHCoefficients = texture.mSHCoefficients;
     }

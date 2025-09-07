@@ -154,7 +154,7 @@ namespace MRenderer
         NestedObjectAllocator(NestedObjectAllocator&& other) 
             :NestedObjectAllocator()
         {
-            Swap(*this, other);
+            swap(*this, other);
         }
 
         ~NestedObjectAllocator() 
@@ -167,7 +167,7 @@ namespace MRenderer
 
         NestedObjectAllocator& operator=(NestedObjectAllocator other) 
         {
-            Swap(*this, other);
+            swap(*this, other);
             return *this;
         }
 
@@ -350,7 +350,7 @@ namespace MRenderer
             return false;
         }
 
-        friend void Swap(NestedObjectAllocator& lhs, NestedObjectAllocator& rhs)
+        friend void swap(NestedObjectAllocator& lhs, NestedObjectAllocator& rhs)
         {
             std::swap(lhs.mChunks, rhs.mChunks);
             std::swap(lhs.mAvaliable, rhs.mAvaliable);
@@ -705,6 +705,32 @@ namespace MRenderer
             mSize = size;
         }
 
+        TLSFMeta(const TLSFMeta& other) = delete;
+
+        TLSFMeta(TLSFMeta&& other)
+            :TLSFMeta(mSize)
+        {
+            swap(*this, other);
+        }
+
+        TLSFMeta& operator=(TLSFMeta other) 
+        {
+            swap(*this, other);
+            return *this;
+        }
+
+        friend void swap(TLSFMeta& lhs, TLSFMeta& rhs) 
+        {
+            using std::swap;
+            swap(lhs.mSize, rhs.mSize);
+            swap(lhs.mFreeOffset, rhs.mFreeOffset);
+            swap(lhs.mFirst, rhs.mFirst);
+            swap(lhs.mLast, rhs.mLast);
+            swap(lhs.mBlockAllocator, rhs.mBlockAllocator);
+            swap(lhs.mAllocationAllocator, rhs.mAllocationAllocator);
+            swap(lhs.mFreeList, rhs.mFreeList);
+        }
+
         Allocation* Allocate(uint32_t size, uint32_t alignment)
         {
             ASSERT(size < mSize);
@@ -854,6 +880,11 @@ namespace MRenderer
         inline uint32_t Size()
         {
             return mSize;
+        }
+
+        inline void Reset() 
+        {
+            *this = std::move(TLSFMeta(mSize));
         }
 
         Stats GetStats() 
@@ -1064,6 +1095,5 @@ namespace MRenderer
         uint32_t mBitMapFLI = 0;
         uint32_t mFreeOffset = 0; // [mFreeoffset, mSize) is the area never been allocated
         uint32_t mSize = 0;
-
     };
 }
