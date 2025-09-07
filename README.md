@@ -1,30 +1,25 @@
 ## Project Overview
-![image](https://github.com/user-attachments/assets/034764dd-568f-49d2-83b9-ac37836b218c)
+This is a toy deferred PBR (Physically Based Rendering) renderer developed with DirectX 12. The project is currently under construction and may contain rendering and performance issues.
 
-This is a toy deferred PBR (Physically Based Rendering) renderer I’ve been developing using DirectX 12. While the core functionality is implemented, there are still some issues to address and additional features to add. I’ll document all details and updates once they’re completed.
+https://github.com/user-attachments/assets/034764dd-568f-49d2-83b9-ac37836b218c
 
-## Implemented Features
-#### D3D12 Command Abstraction
+### Engine Features
+1. Encapsulates common commands such as shader resource binding, pipeline state changes, and draw/compute dispatch calls.
 
-Encapsulated common commands like shader resource binding, pipeline state changes, and draw/compute dispatch calls.
+2. Implements a TLSF allocator for efficient GPU resource allocation.
 
-#### Memory Management
+3. Supports basic reflection mechanics for serializing and deserializing resources.
 
-Implemented TLSF (Two-Level Segregated Fit) allocator for efficient GPU resource allocation.
+4. Automates pass sorting, execution, and transient resource management.
 
-#### Render Graph System
+### Rendering Features
+1. Precomputes pre-integrated environment and BRDF maps, along with spherical harmonics for environment lighting.
 
-Automated pass sorting, execution, and transient render target management for deferred rendering.
+2. Supports HDR with auto exposure and ACE tone mapping.
 
-#### PBR Rendering
+3. Implements bloom using a separable Gaussian filter.
 
-Precompute pre-filtered environment maps, precomputed BRDF, and spherical harmonics for environment lighting.
+4. Includes clustered shading (currently under construction).
 
-#### Simple Compile-Time Reflection
-
-Basic reflection mechanics for serializing/deserializing resources.
-
-## How to Build
-1. Run build.bat to create a build folder with a Visual Studio solution.
-2. Open the solution and set SceneTest as the startup project.
-3. Compile and run, Compilation time may be longer due to redundant compilation (to be optimized).
+### How to Build
+Run build.bat to generate a build directory with a Visual Studio solution.
