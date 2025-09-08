@@ -1,7 +1,8 @@
 ## Project Overview
 This is a toy deferred PBR (Physically Based Rendering) renderer developed with DirectX 12. The project is currently under construction and may contain rendering and performance issues.
 
-https://github.com/user-attachments/assets/034764dd-568f-49d2-83b9-ac37836b218c
+<img width="1306" height="612" alt="image" src="https://github.com/user-attachments/assets/ce9ae5fa-ee09-46bb-a390-8a1465db287e" />
+
 
 ### Engine Features
 1. Encapsulates common commands such as shader resource binding, pipeline state changes, and draw/compute dispatch calls.
