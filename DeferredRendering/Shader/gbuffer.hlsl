@@ -46,18 +46,18 @@ float3 sample_normal_texture(float2 uv, float3 normal, float3 tangent)
     float3x3 TBN = float3x3(tangent, bitangent, normal);
 
     float3 normal_ts = NormalMap.Sample(SamplerLinearWrap, uv).rgb * 2 - 1;
-    float3 normal_os = mul(normal_ts, TBN);
-
-    return normalize(normal_os);
+    return normalize(mul(normal_ts, TBN));
 }
 
 PSInput vs_main(VSInput_P3F_N3F_T2F_T2F vertex)
 {
     PSInput output;
 
+    // ref: UnityShader入门精要 section 4.7
+    // we use the transpose of the inverse model matrix to transform the normal
     output.position_ws = mul(Model, float4(vertex.position, 1));
-    output.normal_ws = mul(Model, float4(vertex.normal, 0)).xyz;
-    output.tangent_ws = mul(Model, float4(vertex.tangent, 0)).xyz;
+    output.normal_ws = mul(transpose(InvModel), float4(vertex.normal, 0)).xyz;
+    output.tangent_ws = mul(transpose(InvModel), float4(vertex.tangent, 0)).xyz;
 
     float4 position_vs = mul(View, output.position_ws);
     output.position = mul(Projection, position_vs);
@@ -79,11 +79,7 @@ GBuffer ps_main(PSInput input)
 
     if(UseNormalMap)
     {
-        float3 normal_os = sample_normal_texture(input.uv, normalize(input.normal_ws), normalize(input.tangent_ws));
-
-        // ref: UnityShader入门精要 section 4.7
-        // we use the transpose of the inverse model matrix to transform the normal
-        normal_ws = normalize(mul(transpose(InvModel), float4(normal_os, 0)).xyz);
+        normal_ws = sample_normal_texture(input.uv, normalize(input.normal_ws), normalize(input.tangent_ws));
     }
     else
     {
