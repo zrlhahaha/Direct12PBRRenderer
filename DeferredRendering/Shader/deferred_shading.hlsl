@@ -82,6 +82,17 @@ float3 ReconstructWorldPosition(float3 camera_vec, float ndc_depth)
     return CameraPos + camera_vec * depth / Near;
 }
 
+//ref: https://www.cemyuksel.com/research/pointlightattenuation/
+float ComputePointLightAttenuation(float distance, PointLightAttenuation attenuation)
+{
+    if(distance >= attenuation.CullingRadius)
+    {
+        return 0.0;
+    }
+
+    return 1.0 / max((attenuation.ConstantCoefficent + attenuation.LinearCoefficent * distance + attenuation.QuadraticCoefficent * distance * distance), EPSILON);
+}
+
 PSInput vs_main(VSInput_P3F_T2F vertex)
 {
     PSInput output;
@@ -116,7 +127,10 @@ PSInput vs_main(VSInput_P3F_T2F vertex)
 
 float4 ps_main(PSInput input) : SV_TARGET
 {
-    float3 albedo = GBufferA.Sample(SamplerPointClamp, input.uv).rgb;
+    float4 gbuffer_a = GBufferA.Sample(SamplerPointClamp, input.uv);
+    float3 albedo = gbuffer_a.rgb;
+    float emission = gbuffer_a.a;
+
     float3 mixed = GBufferC.Sample(SamplerPointClamp, input.uv).rgb;
     float3 normal_ws = unpack_normal(GBufferB.Sample(SamplerPointClamp, input.uv).rg);
 
@@ -151,14 +165,17 @@ float4 ps_main(PSInput input) : SV_TARGET
     int cluster_index = ClusterIndex(input.uv, z_vs);
     float3 point_light_luminance = float3(0, 0, 0);
 
-    for(uint i = 0; i < Clusters[cluster_index].NumLights; i++)
+    Cluster cluster = Clusters[cluster_index];
+
+    for(uint i = 0; i < cluster.NumLights; i++)
     {
-        PointLight light = PointLights[Clusters[cluster_index].LightIndex[i]];
+        PointLight light = PointLights[cluster.LightIndex[i]];
 
-        float3 dir = normalize(light.Position - position_ws);
+        float3 dir = light.Position - position_ws;
         float distance = length(dir);
+        dir = dir / distance;
 
-        float irradiance = light.Intensity / distance / distance;
+        float NdotL = max(dot(normal_ws, dir), 0.0);
 
         BRDFInput pl_brdf_input;
         pl_brdf_input.Metallic = metallic;
@@ -168,9 +185,16 @@ float4 ps_main(PSInput input) : SV_TARGET
         pl_brdf_input.ViewDir = view_ws;
         pl_brdf_input.LightDir = dir;
 
-        point_light_luminance += brdf(pl_brdf_input) * light.Color * irradiance;
-        point_light_luminance += float3(1.0,0.8,0.2) * 0.2;
+        float attenuation = ComputePointLightAttenuation(distance, light.Attenuation);
+
+        point_light_luminance += brdf(pl_brdf_input) * light.Color * light.Intensity * attenuation * NdotL;
     }
 
-    return float4(env_diffuse + env_specular + point_light_luminance * 0.0001f, 1);
+    float3 a = float3(-2, 1, 5);
+
+    // emission
+    float3 emission_luminance = albedo * emission;
+
+    //return float4(env_diffuse + env_specular + point_light_luminance, 1);
+    return float4(env_diffuse + env_specular + point_light_luminance + emission_luminance, 1);
 }

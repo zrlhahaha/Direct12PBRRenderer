@@ -112,6 +112,33 @@ namespace MRenderer
         std::shared_ptr<ModelResource> mModel;
     };
 
+    struct PointLightAttenuation
+    {
+        float Radius;
+        float CullingRadius; // the range when attenuation is below 1/256
+        float ConstantCoefficent;
+        float LinearCoefficent;
+        float QuadraticCoefficent;
+    };
+
+    // attenuation = c + c * d + c * d^2, empirical equation, coefficients comes from below link
+    // https://wiki.ogre3d.org/tiki-index.php?page=-Point+Light+Attenuation
+    static constexpr PointLightAttenuation PointLightAttenuationPresets[] = {
+        {0.1f, 0.181415f, 1.0f, 45.0f, 7500.0f},
+        {1.0f, 1.814153f, 1.0f, 4.5f, 75.0f},
+        {7.0f, 11.709524f, 1.0f, 0.7f, 1.8f},
+        {13.0f, 23.679308f, 1.0f, 0.35f, 0.44f},
+        {20.0f, 35.161378f, 1.0f, 0.22f, 0.2f},
+        {32.0f, 59.364370f, 1.0f, 0.14f, 0.07f},
+        {50.0f, 87.872681f, 1.0f, 0.09f, 0.032f},
+        {65.0f, 120.432967f, 1.0f, 0.07f, 0.017f},
+        {100.0f, 181.415292f, 1.0f, 0.045f, 0.0075f},
+        {160.0f, 296.997515f, 1.0f, 0.027f, 0.0028f},
+        {200.0f, 360.603818f, 1.0f, 0.022f, 0.0019f},
+        {325.0f, 593.643698f, 1.0f, 0.014f, 0.0007f},
+        {600.0f, 1111.794581f, 1.0f, 0.007f, 0.0002f},
+    };
+
 
     class SceneLight : public SceneObject
     {
@@ -119,19 +146,20 @@ namespace MRenderer
         SceneLight() 
             : mColor(1, 1, 1), mIntensity(1.0f)
         {
-            SetRadius(mRadius);
+            SetRadius(1.0f);
         }
 
         SceneLight(std::string_view name, float radius)
             : SceneObject(name)
         {
-            SetRadius(mRadius);
+            SetRadius(radius);
         }
 
         inline void SetRadius(float radius) 
         { 
             mRadius = radius; 
-            mLocalBound = AABB(Vector3(-1, -1, -1) * mRadius, Vector3(1, 1, 1) * mRadius);
+            mAttenuation = CaclAttenuationCoefficients(radius);
+            mLocalBound = AABB(Vector3(-1, -1, -1) * mAttenuation.CullingRadius, Vector3(1, 1, 1) * mAttenuation.CullingRadius);
         }
 
         inline void SetColor(const Vector3& color) { mColor = color; }
@@ -140,14 +168,21 @@ namespace MRenderer
         inline float GetRadius() const { return mRadius; }
         inline const Vector3& GetColor() const { return mColor; }
         inline float GetIntensity() const { return mIntensity; }
+        inline const PointLightAttenuation& GetAttenuationCoefficients() const { return mAttenuation; }
 
         void PostDeserialized();
+
+    public:
+        static PointLightAttenuation CaclAttenuationCoefficients(float radius);
 
     public:
         // serializable member
         Vector3 mColor;
         float mRadius;
         float mIntensity;
+
+        // runtime member
+        PointLightAttenuation mAttenuation;
     };
 
 

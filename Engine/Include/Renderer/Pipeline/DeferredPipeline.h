@@ -166,7 +166,9 @@ namespace MRenderer
             ReadResource(DeferredPipelineResource::PointLights);
             ReadResource(DeferredPipelineResource::FrustumCluster);
 
-            WriteTransientTexture(DeferredPipelineResource::DeferredShadingRT, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_R16G16B16A16_FLOAT);
+            WriteTransientTexture(DeferredPipelineResource::DeferredShadingRT, GD3D12Device->Width(), GD3D12Device->Height(), 1, ETextureFormat_R16G16B16A16_FLOAT,
+                static_cast<ETexture2DFlag>(ETexture2DFlag_AllowRenderTarget | ETexture2DFlag_AllowUnorderedAccess));
+
             WriteResource(DeferredPipelineResource::DepthStencil); // just for stencil test, no writting here
 
             mShadingState.SetShader("deferred_shading.hlsl", false);
@@ -320,17 +322,17 @@ namespace MRenderer
             static constexpr std::string_view PointLights = "PointLights";
         };
 
+        // make sure these definations are the same as those in shader
         static constexpr int32 ClusterSizeX = 24;
         static constexpr int32 ClusterSizeY = 16;
-        static constexpr int32 ClusterSizeZ = 9;
+        static constexpr int32 ClusterSizeZ = 8;
         static constexpr int32 MaxSceneLights = 1024;
-        static constexpr int32 MaxClusterLights = 128;
+        static constexpr int32 MaxClusterLights = 32;
 
         // make sure the defination of @Cluster is same as compute shader
         struct alignas(4) Cluster
         {
             Vector3 MinBound;
-            float Padding;
             Vector3 MaxBound;
             int NumLights;
             int LightIndex[MaxClusterLights];
@@ -339,9 +341,9 @@ namespace MRenderer
         struct alignas(4) PointLight
         {
             Vector3 Position;
-            float Radius;
             Vector3 Color;
             float Intensity;
+            PointLightAttenuation Attenuation;
         };
 
     public:

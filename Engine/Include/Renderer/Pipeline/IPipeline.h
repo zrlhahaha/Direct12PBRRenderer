@@ -68,7 +68,7 @@ namespace MRenderer
 
     public:
         ConstantBufferInstance() 
-            :Albedo(1.0f, 1.0f, 1.0f), Roughness(1.0f), Metallic(0.0f), UseAlbedoMap(false),
+            :Albedo(1.0f, 1.0f, 1.0f), Emission(0.0f), Roughness(1.0f), Metallic(0.0f), UseAlbedoMap(false),
             UseNormalMap(false), UseMetallicMap(false), UseRoughnessMap(false), UseAmbientOcclusionMap(false)
         {
         }
@@ -78,11 +78,11 @@ namespace MRenderer
         Matrix4x4 InvModel;
 
         Vector3 Albedo;
+        float Emission;
         float Roughness;
-
         float Metallic;
-        BOOL UseAlbedoMap;
 
+        BOOL UseAlbedoMap;
         BOOL UseNormalMap;
         BOOL UseMetallicMap;
         BOOL UseRoughnessMap;

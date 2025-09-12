@@ -26,8 +26,8 @@ namespace MRenderer
         // debug controller
         ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&mDebugController)));
         mDebugController->EnableDebugLayer();
-        //mDebugController->SetEnableGPUBasedValidation(true);
-        //mDebugController->SetEnableSynchronizedCommandQueueValidation(true);
+        mDebugController->SetEnableGPUBasedValidation(true);
+        mDebugController->SetEnableSynchronizedCommandQueueValidation(true);
 
         // dxgi factory
         ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&mDxgiFactory)));

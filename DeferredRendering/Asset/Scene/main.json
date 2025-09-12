@@ -1,82 +1,409 @@
 {
     "@IResource": null,
-    "mSceneLight": 
-    [
-        {
-            "@SceneObject": {
-                "mName": "light_0",
-                "mTranslation": {
-                    "x": -2.0,
-                    "z": 5,
-                    "y": 1.0
-                },
-                "mRotation": {
-                    "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
-                },
-                "mScale": {
-                    "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
-                }
-            },
-            "mColor": 
-            {
-                "x": 1.0,
-                "z": 0.0,
-                "y": 0.0
-            },
-            "mRadius": 5.0,
-            "mIntensity": 1.0
-        },
+    "mSceneLight": [
         {
             "@SceneObject": {
                 "mName": "light_1",
                 "mTranslation": {
-                    "x": 2.0,
-                    "z": 5,
-                    "y": 1.0
+                    "x": -4.2,
+                    "y": 1.0,
+                    "z": 3.5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
-                    "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
                 }
             },
-            "mColor": 
-            {
-                "x": 1.0,
-                "z": 0.0,
-                "y": 0.0
+            "mColor": {
+                "x": 0.9,
+                "y": 0.1,
+                "z": 0.3
             },
-            "mRadius": 5.0,
-            "mIntensity": 1.0
+            "mRadius": 2.0,
+            "mIntensity": 10.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_2",
+                "mTranslation": {
+                    "x": 2.8,
+                    "y": 1.0,
+                    "z": -6.7
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                }
+            },
+            "mColor": {
+                "x": 0.2,
+                "y": 0.7,
+                "z": 1.0
+            },
+            "mRadius": 2.0,
+            "mIntensity": 10.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_3",
+                "mTranslation": {
+                    "x": -1.5,
+                    "y": 1.0,
+                    "z": -3.0
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                }
+            },
+            "mColor": {
+                "x": 1.0,
+                "y": 0.8,
+                "z": 0.0
+            },
+            "mRadius": 2.0,
+            "mIntensity": 10.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_4",
+                "mTranslation": {
+                    "x": 6.4,
+                    "y": 1.0,
+                    "z": -1.2
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                }
+            },
+            "mColor": {
+                "x": 0.0,
+                "y": 0.9,
+                "z": 0.4
+            },
+            "mRadius": 2.0,
+            "mIntensity": 10.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_5",
+                "mTranslation": {
+                    "x": -3.8,
+                    "y": 1.0,
+                    "z": -5.9
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                }
+            },
+            "mColor": {
+                "x": 0.5,
+                "y": 0.3,
+                "z": 0.9
+            },
+            "mRadius": 2.0,
+            "mIntensity": 10.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_6",
+                "mTranslation": {
+                    "x": 4.7,
+                    "y": 1.0,
+                    "z": 2.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                }
+            },
+            "mColor": {
+                "x": 0.0,
+                "y": 0.6,
+                "z": 0.9
+            },
+            "mRadius": 2.0,
+            "mIntensity": 10.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_7",
+                "mTranslation": {
+                    "x": 0.9,
+                    "y": 1.0,
+                    "z": 4.8
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                }
+            },
+            "mColor": {
+                "x": 1.0,
+                "y": 0.5,
+                "z": 0.5
+            },
+            "mRadius": 2.0,
+            "mIntensity": 10.0
+        },
+        {
+            "@SceneObject": {
+                "mName": "light_8",
+                "mTranslation": {
+                    "x": -5.3,
+                    "y": 1.0,
+                    "z": 0.6
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mScale": {
+                    "x": 1.0,
+                    "y": 1.0,
+                    "z": 1.0
+                }
+            },
+            "mColor": {
+                "x": 0.7,
+                "y": 1.0,
+                "z": 0.2
+            },
+            "mRadius": 2.0,
+            "mIntensity": 10.0
         }
     ],
     "mSceneModel": [
         {
             "@SceneObject": {
-                "mName": "sphere_R0_M0",
-                "mTranslation": {
-                    "x": 0.0,
-                    "z": 5,
-                    "y": 2.0
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": -4.2,
+                    "y": 1.0,
+                    "z": 3.5
+                },
+                "mName": "light_impostor_0"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_0.json"
+        },
+        {
+            "@SceneObject": {
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": 2.8,
+                    "y": 1.0,
+                    "z": -6.7
+                },
+                "mName": "light_impostor_1"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_1.json"
+        },
+        {
+            "@SceneObject": {
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": -1.5,
+                    "y": 1.0,
+                    "z": -3.0
+                },
+                "mName": "light_impostor_2"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_2.json"
+        },
+        {
+            "@SceneObject": {
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": 6.4,
+                    "y": 1.0,
+                    "z": -1.2
+                },
+                "mName": "light_impostor_3"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_3.json"
+        },
+        {
+            "@SceneObject": {
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": -3.8,
+                    "y": 1.0,
+                    "z": -5.9
+                },
+                "mName": "light_impostor_4"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_4.json"
+        },
+        {
+            "@SceneObject": {
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": 4.7,
+                    "y": 1.0,
+                    "z": 2.1
+                },
+                "mName": "light_impostor_5"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_5.json"
+        },
+        {
+            "@SceneObject": {
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": 0.9,
+                    "y": 1.0,
+                    "z": 4.8
+                },
+                "mName": "light_impostor_6"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_6.json"
+        },
+        {
+            "@SceneObject": {
+                "mScale": {
+                    "x": 0.1,
+                    "y": 0.1,
+                    "z": 0.1
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "mTranslation": {
+                    "x": -5.3,
+                    "y": 1.0,
+                    "z": 0.6
+                },
+                "mName": "light_impostor_7"
+            },
+            "mModelFilePath": "Asset/Model/LightImpostor/Model/light_impostor_model_7.json"
+        },
+        {
+            "@SceneObject": {
+                "mName": "sphere_R0_M0",
+                "mTranslation": {
+                    "x": 0.0,
+                    "y": 2.0,
+                    "z": 5
+                },
+                "mRotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M0"
@@ -86,18 +413,18 @@
                 "mName": "sphere_R0_M1",
                 "mTranslation": {
                     "x": 0.0,
-                    "z": 5,
-                    "y": 4.0
+                    "y": 4.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M1"
@@ -107,18 +434,18 @@
                 "mName": "sphere_R0_M2",
                 "mTranslation": {
                     "x": 0.0,
-                    "z": 5,
-                    "y": 6.0
+                    "y": 6.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M2"
@@ -128,18 +455,18 @@
                 "mName": "sphere_R0_M3",
                 "mTranslation": {
                     "x": 0.0,
-                    "z": 5,
-                    "y": 8.0
+                    "y": 8.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M3"
@@ -149,18 +476,18 @@
                 "mName": "sphere_R0_M4",
                 "mTranslation": {
                     "x": 0.0,
-                    "z": 5,
-                    "y": 10.0
+                    "y": 10.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R0_M4"
@@ -170,18 +497,18 @@
                 "mName": "sphere_R1_M0",
                 "mTranslation": {
                     "x": 2.0,
-                    "z": 5,
-                    "y": 2.0
+                    "y": 2.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M0"
@@ -191,18 +518,18 @@
                 "mName": "sphere_R1_M1",
                 "mTranslation": {
                     "x": 2.0,
-                    "z": 5,
-                    "y": 4.0
+                    "y": 4.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M1"
@@ -212,18 +539,18 @@
                 "mName": "sphere_R1_M2",
                 "mTranslation": {
                     "x": 2.0,
-                    "z": 5,
-                    "y": 6.0
+                    "y": 6.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M2"
@@ -233,18 +560,18 @@
                 "mName": "sphere_R1_M3",
                 "mTranslation": {
                     "x": 2.0,
-                    "z": 5,
-                    "y": 8.0
+                    "y": 8.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M3"
@@ -254,18 +581,18 @@
                 "mName": "sphere_R1_M4",
                 "mTranslation": {
                     "x": 2.0,
-                    "z": 5,
-                    "y": 10.0
+                    "y": 10.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R1_M4"
@@ -275,18 +602,18 @@
                 "mName": "sphere_R2_M0",
                 "mTranslation": {
                     "x": 4.0,
-                    "z": 5,
-                    "y": 2.0
+                    "y": 2.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M0"
@@ -296,18 +623,18 @@
                 "mName": "sphere_R2_M1",
                 "mTranslation": {
                     "x": 4.0,
-                    "z": 5,
-                    "y": 4.0
+                    "y": 4.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M1"
@@ -317,18 +644,18 @@
                 "mName": "sphere_R2_M2",
                 "mTranslation": {
                     "x": 4.0,
-                    "z": 5,
-                    "y": 6.0
+                    "y": 6.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M2"
@@ -338,18 +665,18 @@
                 "mName": "sphere_R2_M3",
                 "mTranslation": {
                     "x": 4.0,
-                    "z": 5,
-                    "y": 8.0
+                    "y": 8.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M3"
@@ -359,18 +686,18 @@
                 "mName": "sphere_R2_M4",
                 "mTranslation": {
                     "x": 4.0,
-                    "z": 5,
-                    "y": 10.0
+                    "y": 10.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R2_M4"
@@ -380,18 +707,18 @@
                 "mName": "sphere_R3_M0",
                 "mTranslation": {
                     "x": 6.0,
-                    "z": 5,
-                    "y": 2.0
+                    "y": 2.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M0"
@@ -401,18 +728,18 @@
                 "mName": "sphere_R3_M1",
                 "mTranslation": {
                     "x": 6.0,
-                    "z": 5,
-                    "y": 4.0
+                    "y": 4.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M1"
@@ -422,18 +749,18 @@
                 "mName": "sphere_R3_M2",
                 "mTranslation": {
                     "x": 6.0,
-                    "z": 5,
-                    "y": 6.0
+                    "y": 6.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M2"
@@ -443,18 +770,18 @@
                 "mName": "sphere_R3_M3",
                 "mTranslation": {
                     "x": 6.0,
-                    "z": 5,
-                    "y": 8.0
+                    "y": 8.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M3"
@@ -464,18 +791,18 @@
                 "mName": "sphere_R3_M4",
                 "mTranslation": {
                     "x": 6.0,
-                    "z": 5,
-                    "y": 10.0
+                    "y": 10.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R3_M4"
@@ -485,18 +812,18 @@
                 "mName": "sphere_R4_M0",
                 "mTranslation": {
                     "x": 8.0,
-                    "z": 5,
-                    "y": 2.0
+                    "y": 2.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M0"
@@ -506,18 +833,18 @@
                 "mName": "sphere_R4_M1",
                 "mTranslation": {
                     "x": 8.0,
-                    "z": 5,
-                    "y": 4.0
+                    "y": 4.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M1"
@@ -527,18 +854,18 @@
                 "mName": "sphere_R4_M2",
                 "mTranslation": {
                     "x": 8.0,
-                    "z": 5,
-                    "y": 6.0
+                    "y": 6.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M2"
@@ -548,18 +875,18 @@
                 "mName": "sphere_R4_M3",
                 "mTranslation": {
                     "x": 8.0,
-                    "z": 5,
-                    "y": 8.0
+                    "y": 8.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M3"
@@ -569,18 +896,18 @@
                 "mName": "sphere_R4_M4",
                 "mTranslation": {
                     "x": 8.0,
-                    "z": 5,
-                    "y": 10.0
+                    "y": 10.0,
+                    "z": 5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Sphere/SphereModel/sphere_R4_M4"
@@ -590,18 +917,18 @@
                 "mName": "revolver",
                 "mTranslation": {
                     "x": 0,
-                    "z": 0,
-                    "y": 1.0
+                    "y": 1.0,
+                    "z": 0
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 90
+                    "y": 90,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 1.0,
-                    "z": 1.0,
-                    "y": 1.0
+                    "y": 1.0,
+                    "z": 1.0
                 }
             },
             "mModelFilePath": "Asset/Model/Revolver/Revolver_Model"
@@ -611,18 +938,18 @@
                 "mName": "suitcase",
                 "mTranslation": {
                     "x": 2.0,
-                    "z": 0,
-                    "y": 0.2
+                    "y": 0.2,
+                    "z": 0
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 2.0,
-                    "z": 2.0,
-                    "y": 2.0
+                    "y": 2.0,
+                    "z": 2.0
                 }
             },
             "mModelFilePath": "Asset/Model/Suitcase/Suitcase_Model"
@@ -632,18 +959,18 @@
                 "mName": "rock",
                 "mTranslation": {
                     "x": -3.0,
-                    "z": -5,
-                    "y": 1.2
+                    "y": 1.2,
+                    "z": -5
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 0.5,
-                    "z": 0.5,
-                    "y": 0.5
+                    "y": 0.5,
+                    "z": 0.5
                 }
             },
             "mModelFilePath": "Asset/Model/Rock/Rock_Model"
@@ -653,18 +980,18 @@
                 "mName": "barrel",
                 "mTranslation": {
                     "x": 3.0,
-                    "z": 0,
-                    "y": 0.8
+                    "y": 0.8,
+                    "z": 0
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 2.0,
-                    "z": 2.0,
-                    "y": 2.0
+                    "y": 2.0,
+                    "z": 2.0
                 }
             },
             "mModelFilePath": "Asset/Model/Barrel/Barrel_Model"
@@ -674,18 +1001,18 @@
                 "mName": "tile",
                 "mTranslation": {
                     "x": 0.0,
-                    "z": 0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0
                 },
                 "mRotation": {
                     "x": 0.0,
-                    "z": 0.0,
-                    "y": 0.0
+                    "y": 0.0,
+                    "z": 0.0
                 },
                 "mScale": {
                     "x": 100.0,
-                    "z": 100.0,
-                    "y": 100.0
+                    "y": 100.0,
+                    "z": 100.0
                 }
             },
             "mModelFilePath": "Asset/Model/Tile/Tile_Model"

@@ -19,6 +19,11 @@ namespace MRenderer
         return n == 0 ? 1 : base * Pow(base, n - 1);
     }
 
+    constexpr float Lerp(float a, float b, float t) 
+    {
+        return a + (b - a) * t;
+    }
+
     template<typename T>
         requires std::is_arithmetic_v<T>
     constexpr T Clamp(T x, std::type_identity_t<T> a, std::type_identity_t<T> b)

@@ -12,7 +12,7 @@ bool sphere_aabb_intersection(float3 center, float radius, float3 aabb_min, floa
 {
     float3 closest = clamp(center, aabb_min, aabb_max);
     float3 distance = center - closest;
-    return dot(distance, distance) < dot(radius, radius);
+    return dot(distance, distance) < radius * radius;
 }
 
 [numthreads(ClusterX, ClusterY, 1)]
@@ -29,10 +29,9 @@ void cs_main(int3 dtid: SV_DispatchThreadID)
             // TODO: we can store the view space light position into group shared memory to avoid redundant matrix multiplication
             float3 pos_view = mul(View, float4(light.Position, 1)).xyz;
 
-            if(sphere_aabb_intersection(pos_view, light.Radius, Clusters[cluster_index].MinBound, Clusters[cluster_index].MaxBound))
+            if(sphere_aabb_intersection(pos_view, light.Attenuation.CullingRadius, Clusters[cluster_index].MinBound, Clusters[cluster_index].MaxBound))
             {
-                int light_index;
-                InterlockedAdd(Clusters[cluster_index].NumLights, 1, light_index);
+                int light_index = Clusters[cluster_index].NumLights++;
                 Clusters[cluster_index].LightIndex[light_index] = i;
             }
         }

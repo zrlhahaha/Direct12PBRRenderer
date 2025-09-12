@@ -4,6 +4,7 @@
 #define PI 3.14159265359
 #define INV_PI 0.31830988618
 #define NUM_CUBEMAP_FACES 6
+#define EPSILON 1e-6
 
 #define PREFILTER_ENVMAP_MIPMAP_SIZE 5u
 #define CONSTANT_BUFFER_REGISTER_SHADER b0
@@ -54,24 +55,6 @@ cbuffer CONSTANT_BUFFER_GLOBAL : register(b2)
     float DeltaTime;
     float Time;
 }
-
-// GBufferA R8G8B8A8
-//  |---8-bits---||---8-bits---||---8-bits---||---8-bits---|
-//  |---------------base color---------------||---unused---|
-
-
-// GBufferB: R16G16
-//  |---------16-bits--- ------||---------16-bits--- ------|
-//  |---------normal.x---------||---------normal.y---------|
-
-// GBufferC: |---8-bits---||---8-bits---||---8-bits---||---8-bits---|
-//           |--roughness-||--metalic---||-----AO-----||---unused---|
-struct GBuffer
-{
-    float4 GBufferA: SV_Target0;
-    float4 GBufferB: SV_Target1;
-    float4 GBufferC: SV_Target2;
-};
 
 struct VSInput_P3F_N3F_T2F_T2F
 {

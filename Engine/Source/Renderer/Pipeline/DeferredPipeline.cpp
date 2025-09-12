@@ -165,7 +165,7 @@ namespace MRenderer
             MaterialResource* material = obj->GetModel()->GetMaterial(i);
             ShadingState* shading_state = material->GetShadingState();
 
-            ConstantBufferInstance cb = {};
+            ConstantBufferInstance cb{};
 
             // copy shader parameters from parameter table to constant buffer
             material->ApplyShaderParameter(cb, shading_state->GetShader(), ConstantBufferInstance::SemanticName);
@@ -231,9 +231,9 @@ namespace MRenderer
                     lights[i++] = PointLight
                     {
                         .Position = light->GetTranslation(),
-                        .Radius = light->GetRadius(),
                         .Color = light->GetColor(),
-                        .Intensity = light->GetIntensity()
+                        .Intensity = light->GetIntensity(),
+                        .Attenuation = light->GetAttenuationCoefficients()
                     };
                 }
             );
@@ -448,7 +448,7 @@ namespace MRenderer
                     );
 
                     // horizontal blur
-                    mDownsampleH[i].SetTexture(BlurHorizontal::InputTexture, temp_tex, upper_mip_level);
+                    mDownsampleH[i].SetTexture(BlurHorizontal::InputTexture, mip_chain, upper_mip_level);
                     mDownsampleH[i].SetRWTexture(BlurHorizontal::OutputTexture, temp_tex, upper_mip_level + 1);
                     context->CommandList->Dispatch(&mDownsampleH[i], CalculateDispatchSize(lower_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
                 }
@@ -463,7 +463,7 @@ namespace MRenderer
 
                     // vertical blur
                     mDownsampleV[i].SetTexture(BlurVerticalShader::InputTexture, temp_tex, i + 2);
-                    mDownsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, temp_tex, i + 2);
+                    mDownsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, mip_chain, i + 2);
                     context->CommandList->Dispatch(&mDownsampleV[i], CalculateDispatchSize(lower_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(lower_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
                 }
             }
@@ -484,7 +484,7 @@ namespace MRenderer
                 {
                     PIXScope(context->CommandList, "Upsample Horizontal Add");
 
-                    // H(t1) + H(t2)
+                    // H(t1) + H(t2), merge two mip levels
                     mUpsampleH[i].SetConstantBuffer
                     (
                         UpsampleAddShader::ConstantBuffer
@@ -493,8 +493,8 @@ namespace MRenderer
                         }
                     );
 
-                    mUpsampleH[i].SetTexture(UpsampleAddShader::UpperLevel, temp_tex, upper_mip_level);
-                    mUpsampleH[i].SetTexture(UpsampleAddShader::LowerLevel, temp_tex, upper_mip_level + 1);
+                    mUpsampleH[i].SetTexture(UpsampleAddShader::UpperLevel, mip_chain, upper_mip_level);
+                    mUpsampleH[i].SetTexture(UpsampleAddShader::LowerLevel, mip_chain, upper_mip_level + 1);
                     mUpsampleH[i].SetRWTexture(UpsampleAddShader::OutputTexture, temp_tex, i + 1);
                     context->CommandList->Dispatch(&mUpsampleH[i], CalculateDispatchSize(upper_mip_width, UpsampleAddShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, UpsampleAddShader::ThreadGroupSizeY), 1);
                 }
@@ -511,7 +511,7 @@ namespace MRenderer
 
                     // V(t)
                     mUpsampleV[i].SetTexture(BlurVerticalShader::InputTexture, temp_tex, upper_mip_level);
-                    mUpsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, temp_tex, upper_mip_level);
+                    mUpsampleV[i].SetRWTexture(BlurVerticalShader::OutputTexture, mip_chain, upper_mip_level);
                     context->CommandList->Dispatch(&mUpsampleV[i], CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
                 }
             }
@@ -524,6 +524,7 @@ namespace MRenderer
 
             uint32 upper_mip_width = temp_tex->Width();
             uint32 upper_mip_height = temp_tex->Height();
+            ASSERT(upper_mip_width == mip_chain->Width() && upper_mip_height == mip_chain->Height());
 
             {
                 PIXScope(context->CommandList, "Blur Horizontal");
@@ -536,7 +537,7 @@ namespace MRenderer
                     }
                 );
 
-                mUpsampleBlurH.SetTexture(BlurHorizontal::InputTexture, temp_tex, 1);
+                mUpsampleBlurH.SetTexture(BlurHorizontal::InputTexture, mip_chain, 1);
                 mUpsampleBlurH.SetRWTexture(BlurHorizontal::OutputTexture, temp_tex, 0);
                 context->CommandList->Dispatch(&mUpsampleBlurH, CalculateDispatchSize(upper_mip_width, BlurHorizontal::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurHorizontal::ThreadGroupSizeY), 1);
             }
@@ -553,7 +554,7 @@ namespace MRenderer
 
                 // vertical blur
                 mUpsampleBlurV.SetTexture(BlurVerticalShader::InputTexture, temp_tex, 0);
-                mUpsampleBlurV.SetRWTexture(BlurVerticalShader::OutputTexture, temp_tex, 0);
+                mUpsampleBlurV.SetRWTexture(BlurVerticalShader::OutputTexture, mip_chain, 0);
                 context->CommandList->Dispatch(&mUpsampleBlurV, CalculateDispatchSize(upper_mip_width, BlurVerticalShader::ThreadGroupSizeX), CalculateDispatchSize(upper_mip_height, BlurVerticalShader::ThreadGroupSizeY), 1);
             }
 
@@ -561,8 +562,8 @@ namespace MRenderer
                 PIXScope(context->CommandList, "Merge");
 
                 // merge with original texture
-                mUpsampleMerge.SetTexture(MergeShader::InputTexture , original_tex, 0);
-                mUpsampleMerge.SetRWTexture(MergeShader::OutputTexture, temp_tex, 0);
+                mUpsampleMerge.SetTexture(MergeShader::InputTexture , mip_chain, 0);
+                mUpsampleMerge.SetRWTexture(MergeShader::OutputTexture, original_tex, 0);
                 context->CommandList->Dispatch(&mUpsampleMerge, CalculateDispatchSize(original_tex->Width(), MergeShader::ThreadGroupSizeX), CalculateDispatchSize(original_tex->Height(), MergeShader::ThreadGroupSizeY), 1);
             }
         }

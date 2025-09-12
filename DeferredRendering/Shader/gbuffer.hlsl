@@ -6,6 +6,25 @@ Texture2D RoughnessMap : register(t2);
 Texture2D MetallicMap : register(t3);
 Texture2D AmbientOcclusionMap : register(t4);
 
+
+// GBufferA R8G8B8A8
+//  |---8-bits---||---8-bits---||---8-bits---||----8-bits----|
+//  |---------------base color---------------||---emission---|
+
+
+// GBufferB: R16G16
+//  |---------16-bits--- ------||---------16-bits--- ------|
+//  |---------normal.x---------||---------normal.y---------|
+
+// GBufferC: |---8-bits---||---8-bits---||---8-bits---||---8-bits---|
+//           |--roughness-||--metalic---||-----AO-----||---unused---|
+struct GBuffer
+{
+    float4 GBufferA: SV_Target0;
+    float4 GBufferB: SV_Target1;
+    float4 GBufferC: SV_Target2;
+};
+
 // warn: make sure constant buffer memory layouts in hlsl and c++ are the same, or the parameters will be assigned randomly
 cbuffer CONSTANT_BUFFER_SHADER : register(CONSTANT_BUFFER_REGISTER_SHADER)
 {
@@ -17,11 +36,11 @@ cbuffer CONSTANT_BUFFER_INSTANCE : register(CONSTANT_BUFFER_REGISTER_INSTANCE)
     float4x4 InvModel;
 
     float3 Albedo;
+    float Emission;
     float Roughness;
-
     float Metallic;
-    bool UseAlbedoMap;
 
+    bool UseAlbedoMap;
     bool UseNormalMap;
     bool UseMetallicMap;
     bool UseRoughnessMap;
@@ -122,7 +141,7 @@ GBuffer ps_main(PSInput input)
         ambient_occlusion = 0.0;
     }
 
-    output.GBufferA = float4(albedo, 0);
+    output.GBufferA = float4(albedo, Emission);
     output.GBufferB = float4(pack_normal(normal_ws), 1, 0);
     output.GBufferC = float4(roughness, metallic, ambient_occlusion, 0);
 

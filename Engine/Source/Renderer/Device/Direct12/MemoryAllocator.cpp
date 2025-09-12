@@ -232,6 +232,7 @@ namespace MRenderer
             ret.PageIndex = heap_index;
             ret.Resource = resource;
             ret.MetaAllocation = meta_allocation;
+            ret.Source = this;
 
             return ret;
         }

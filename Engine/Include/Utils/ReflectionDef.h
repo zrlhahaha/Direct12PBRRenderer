@@ -130,7 +130,9 @@ namespace MRenderer
     END_REFLECT_CLASS
 
     BEGIN_REFLECT_CLASS(SceneLight, SceneObject)
-        REFLECT_FIELD(mRadius, true)
+        REFLECT_FIELD(mRadius, true),
+        REFLECT_FIELD(mColor, true),
+        REFLECT_FIELD(mIntensity, true)
     END_REFLECT_CLASS
 
     BEGIN_REFLECT_CLASS(SceneModel, SceneObject)

@@ -3,8 +3,6 @@
 #define NUM_HISTOGRAM_BINS 256
 #define HISTOGRAM_THREAD_GROUP_SIZE 16
 
-#define EPSILON 0.0000001
-
 // compute histogram of @LuminanceTexture
 // ref https://www.alextardif.com/HistogramLuminance.html
 
