@@ -2,6 +2,10 @@
 #define H_CLUSTERED
 
 #include "global.hlsli"
+
+// at approximately 1.81418 * radius, light intensity falls below 1/256
+#define CullingRadiusCoefficient 1.814f
+
 #define MaxLightsPerCluster 32
 #define ClusterX 24
 #define ClusterY 16
@@ -19,7 +23,6 @@ struct Cluster
 struct PointLightAttenuation
 {
     float Radius;
-    float CullingRadius;
     float ConstantCoefficent;
     float LinearCoefficent;
     float QuadraticCoefficent;
@@ -50,9 +53,9 @@ int ClusterIndex(float2 uv, float z)
     int slice_z = int(ClusterZ * log(min(max(z, Near), Far) / Near) / log(Far / Near));
     
     return ClusterIndex(
-            min(max(slice_x, 0), ClusterX),
-            min(max(slice_y, 0), ClusterY),
-            min(max(slice_z, 0), ClusterZ)
+            min(max(slice_x, 0), ClusterX - 1),
+            min(max(slice_y, 0), ClusterY - 1),
+            min(max(slice_z, 0), ClusterZ - 1)
         );
 }
 #endif

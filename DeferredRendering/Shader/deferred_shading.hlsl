@@ -85,11 +85,6 @@ float3 ReconstructWorldPosition(float3 camera_vec, float ndc_depth)
 //ref: https://www.cemyuksel.com/research/pointlightattenuation/
 float ComputePointLightAttenuation(float distance, PointLightAttenuation attenuation)
 {
-    if(distance >= attenuation.CullingRadius)
-    {
-        return 0.0;
-    }
-
     return 1.0 / max((attenuation.ConstantCoefficent + attenuation.LinearCoefficent * distance + attenuation.QuadraticCoefficent * distance * distance), EPSILON);
 }
 
@@ -190,11 +185,8 @@ float4 ps_main(PSInput input) : SV_TARGET
         point_light_luminance += brdf(pl_brdf_input) * light.Color * light.Intensity * attenuation * NdotL;
     }
 
-    float3 a = float3(-2, 1, 5);
-
     // emission
     float3 emission_luminance = albedo * emission;
 
-    //return float4(env_diffuse + env_specular + point_light_luminance, 1);
     return float4(env_diffuse + env_specular + point_light_luminance + emission_luminance, 1);
 }

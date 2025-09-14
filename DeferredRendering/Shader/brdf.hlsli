@@ -7,17 +7,17 @@ float distribution_ggx(float NdotH, float roughness)
 {
     float a = roughness * roughness;
     float t = (NdotH * NdotH) * (a * a - 1.0) + 1.0;
-    return a * a / (PI * t * t);
+    return a * a / max((PI * t * t), EPSILON);
 }
 
 float3 fresnel(float NdotL, float3 F0)
 {
-    return F0 + (1.0 - F0) * pow(1 - NdotL, 5);
+    return F0 + (1.0 - F0) * pow(max(1 - NdotL, EPSILON), 5);
 }
 
 float geometry_schlick_ggx(float NdotV, float k)
 {
-    return NdotV / (NdotV * (1.0 - k) + k);
+    return NdotV / max((NdotV * (1.0 - k) + k), EPSILON);
 }
 
 float geometry_smith(float NdotL, float NdotV, float k)

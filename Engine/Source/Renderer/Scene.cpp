@@ -98,11 +98,35 @@ namespace MRenderer{
         }
     }
 
+    inline void SceneLight::SetRadius(float radius)
+    {
+        mRadius = radius;
+        mAttenuation = CaclAttenuationCoefficients(radius);
+
+        RecalculateAABB();
+    }
+
+    void SceneLight::SetIntensity(float intensity)
+    {
+        mIntensity = intensity; 
+        RecalculateAABB();
+    }
+
     void SceneLight::PostDeserialized()
     {
         SceneObject::PostDeserialized();
 
         SetRadius(mRadius);
+    }
+
+    void SceneLight::RecalculateAABB()
+    {
+        float culling_radius = mRadius * PointLightAttenuation::CullingRadiusCoefficient * sqrt(mIntensity);
+        mLocalBound = AABB
+        (
+            Vector3(-1, -1, -1) * culling_radius,
+            Vector3(1, 1, 1) * culling_radius
+        );
     }
 
     PointLightAttenuation MRenderer::SceneLight::CaclAttenuationCoefficients(float radius)
@@ -117,7 +141,6 @@ namespace MRenderer{
                 return PointLightAttenuation
                 {
                     .Radius = radius,
-                    .CullingRadius = lower.CullingRadius,
                     .ConstantCoefficent = lower.ConstantCoefficent,
                     .LinearCoefficent = lower.LinearCoefficent,
                     .QuadraticCoefficent = lower.QuadraticCoefficent,
@@ -131,7 +154,6 @@ namespace MRenderer{
                 return PointLightAttenuation
                 {
                     .Radius = radius,
-                    .CullingRadius = Lerp(lower.CullingRadius, upper.CullingRadius, k),
                     .ConstantCoefficent = Lerp(lower.ConstantCoefficent, upper.ConstantCoefficent, k),
                     .LinearCoefficent = Lerp(lower.LinearCoefficent, upper.LinearCoefficent, k),
                     .QuadraticCoefficent = Lerp(lower.QuadraticCoefficent, upper.QuadraticCoefficent, k),

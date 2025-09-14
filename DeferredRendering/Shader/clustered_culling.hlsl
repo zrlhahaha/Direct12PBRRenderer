@@ -29,7 +29,9 @@ void cs_main(int3 dtid: SV_DispatchThreadID)
             // TODO: we can store the view space light position into group shared memory to avoid redundant matrix multiplication
             float3 pos_view = mul(View, float4(light.Position, 1)).xyz;
 
-            if(sphere_aabb_intersection(pos_view, light.Attenuation.CullingRadius, Clusters[cluster_index].MinBound, Clusters[cluster_index].MaxBound))
+            // I/(1 + 4.5*d/r + 75*d/r^2) = 1/256 => 1.814 * r * sqrt(I)
+            float culling_radius = light.Attenuation.Radius * CullingRadiusCoefficient * sqrt(light.Intensity);
+            if(sphere_aabb_intersection(pos_view, culling_radius, Clusters[cluster_index].MinBound, Clusters[cluster_index].MaxBound))
             {
                 int light_index = Clusters[cluster_index].NumLights++;
                 Clusters[cluster_index].LightIndex[light_index] = i;
