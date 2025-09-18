@@ -1,8 +1,7 @@
 #pragma once
 #include <memory>
-#include <deque>
-#include <iostream>
 #include <vector>
+#include <array>
 
 #include "Fundation.h"
 #include "Constexpr.h"
@@ -13,8 +12,8 @@ namespace MRenderer
 {
     // An object allocator just like vector but with deque memory layout
     // 1. T will be wrapped in a linked list node(@Block), each node will point out the next free node
-    // 2. group of nodes lie in a contiguous memory block(@Chunk)
-    // 3. @mChunks will grow automatically if more nodes are required
+    // 2. group of nodes lie in a contiguous memory block(@Page)
+    // 3. @mPages will grow automatically if more nodes are required
     // 4. capacity expansion won't change the address of existing nodes
     // 5. O(1) time complexity for @Allocate and @Free
     template<typename T>
@@ -46,13 +45,13 @@ namespace MRenderer
             }
         };
 
-        struct Chunk
+        struct Page
         {
             Block* Begin;
             Block* End;
             size_t Capacity;
-            Chunk(Block* buffer, size_t capacity) :
-                Begin(buffer), End(buffer + capacity * sizeof(Block)), Capacity(capacity)
+            Page(Block* buffer, size_t capacity) :
+                Begin(buffer), End(buffer + capacity), Capacity(capacity)
             {
             }
 
@@ -76,8 +75,8 @@ namespace MRenderer
             static constexpr uint32 Stride = sizeof(Block);
 
         protected:
-            Iterator(NestedObjectAllocator* allocator, uint32 chunk_index, uint32 element_index):
-                ChunkIndex(chunk_index), ElementIndex(element_index), Allocator(allocator)
+            Iterator(NestedObjectAllocator* allocator, uint32 page_index, uint32 element_index):
+                PageIndex(page_index), ElementIndex(element_index), Allocator(allocator)
             {
             }
 
@@ -86,12 +85,12 @@ namespace MRenderer
             {
                 ElementIndex += 1;
 
-                while (ChunkIndex < Allocator->mChunks.size()) 
+                while (PageIndex < Allocator->mPages.size()) 
                 {
-                    Chunk& chunk = Allocator->mChunks[ChunkIndex];
-                    while (ElementIndex < chunk.Capacity)
+                    Page& page = Allocator->mPages[PageIndex];
+                    while (ElementIndex < page.Capacity)
                     {
-                        if (chunk.Begin[ElementIndex].IsOccupied())
+                        if (page.Begin[ElementIndex].IsOccupied())
                         {
                             return *this;
                         }
@@ -101,8 +100,8 @@ namespace MRenderer
                         }
                     }
 
-                    // ok, this chunk is iterated, we move to the next chunk
-                    ChunkIndex += 1;
+                    // ok, this page is iterated, we move to the next page
+                    PageIndex += 1;
                     ElementIndex = 0;
                 }
 
@@ -112,28 +111,28 @@ namespace MRenderer
 
             bool operator!=(const Iterator& other) const
             {
-                return ChunkIndex != other.ChunkIndex || ElementIndex != other.ElementIndex;
+                return PageIndex != other.PageIndex || ElementIndex != other.ElementIndex;
             }
 
             T& operator*()
             {
                 ASSERT(*this != End());
-                ASSERT(ChunkIndex < Allocator->mChunks.size() && ElementIndex < Allocator->mChunks[ChunkIndex].Capacity);
+                ASSERT(PageIndex < Allocator->mPages.size() && ElementIndex < Allocator->mPages[PageIndex].Capacity);
                 
-                Block* block = Allocator->mChunks[ChunkIndex].Begin + ElementIndex;
+                Block* block = Allocator->mPages[PageIndex].Begin + ElementIndex;
 
                 ASSERT(block->IsOccupied());
-                return (Allocator->mChunks[ChunkIndex].Begin + ElementIndex)->Data;
+                return (Allocator->mPages[PageIndex].Begin + ElementIndex)->Data;
             }
 
         public:
             static Iterator End()
             {
-                return Iterator(nullptr, -1, -1);
+                return Iterator(nullptr, (std::numeric_limits<uint32>::max)(), (std::numeric_limits<uint32>::max)());
             }
 
         private:
-            uint32 ChunkIndex;
+            uint32 PageIndex;
             uint32 ElementIndex;
             NestedObjectAllocator* Allocator;
         };
@@ -146,7 +145,7 @@ namespace MRenderer
 
     public:
         NestedObjectAllocator() 
-            :mAvaliable(nullptr), mSize(0)
+            :mAvaliable(nullptr), mOccupied(0)
         {
         };
 
@@ -159,9 +158,9 @@ namespace MRenderer
 
         ~NestedObjectAllocator() 
         {
-            for (auto& chunk  : mChunks) 
+            for (auto& page  : mPages) 
             {
-                _aligned_free(chunk.Begin);
+                _aligned_free(page.Begin);
             }
         };
 
@@ -183,14 +182,15 @@ namespace MRenderer
 
             Block* block = mAvaliable;
 
-            mAvaliable = mAvaliable->NextAvaliable;
-            block->NextAvaliable = block; // the @NextAvaliable pointer of occupied Block points to itself
-
             // invoke constructor
             T* data_ptr = block->GetDataPtr();
             new(data_ptr)T(std::forward<Args>(args)...);
 
-            mSize += 1;
+            // remove block from the free list
+            mAvaliable = mAvaliable->NextAvaliable;
+            block->NextAvaliable = block; // the @NextAvaliable pointer of occupied Block points to itself
+
+            mOccupied += 1;
             return data_ptr;
         }
 
@@ -212,39 +212,27 @@ namespace MRenderer
                 mAvaliable = block;
             }
 
-            mSize -= 1;
+            mOccupied -= 1;
             data_ptr = nullptr;
-        }
-
-        template<typename U>
-            requires requires(U t) { std::same_as<std::decay<decltype(t.next)*>, T*>; }
-        void FreeList(U*& ptr)
-        {
-            while (ptr)
-            {
-                U* next = ptr->next;
-                Free(ptr);
-                ptr = next;
-            }
         }
 
         void Clear() 
         {
-            for (Chunk& chunk : mChunks) 
+            for (Page& page : mPages) 
             {
-                _ResetLinkage(chunk);
+                _ResetLinkage(page);
             }
-            mAvaliable = mChunks[0].Begin;
-            mSize = 0;
+            mAvaliable = mPages[0].Begin;
+            mOccupied = 0;
         }
 
         AllocatorStats GetStats()
         {   
             AllocatorStats stats{};
 
-            for (Chunk& chunk : mChunks)
+            for (Page& page : mPages)
             {
-                stats.Total += chunk.Capacity;
+                stats.Total += page.Capacity;
             }
 
             Block* p = mAvaliable;
@@ -256,25 +244,25 @@ namespace MRenderer
 
             stats.Occupied = stats.Total - stats.Avaliable;
 
-            ASSERT(stats.Occupied == mSize);
+            ASSERT(stats.Occupied == mOccupied);
             ASSERT(stats.Total == stats.Occupied + stats.Avaliable);
 
             return stats;
         }
 
         // how many objects is allocated
-        inline uint32 Size() const { return mSize; }
+        inline uint32 Size() const { return mOccupied; }
 
         Iterator begin()
         {
-            if (mChunks.empty()) 
+            if (mPages.empty()) 
             {
                 return Iterator::End();
             }
             else 
             {
                 Iterator it(this, 0, 0);
-                if (!mChunks.empty() && mChunks[0].Begin->IsOccupied())
+                if (!mPages.empty() && mPages[0].Begin->IsOccupied())
                 {
                     return it;
                 }
@@ -301,35 +289,31 @@ namespace MRenderer
     protected:
         void _Expand()
         {
-            size_t capacity = mChunks.empty() ? DEFAULT_CAPACITY : static_cast<size_t>(mChunks.back().Capacity * 1.5);
+            size_t capacity = mPages.empty() ? DEFAULT_CAPACITY : static_cast<size_t>(mPages.back().Capacity * 1.5);
 
             // allocate memory
             Block* blocks = reinterpret_cast<Block*>(_aligned_malloc(sizeof(Block) * capacity, alignof(Block)));
             memset(blocks, 0, sizeof(Block) * capacity);
-            mChunks.push_back(Chunk(blocks, capacity));
+            mPages.push_back(Page(blocks, capacity));
 
-            Chunk& chunk = mChunks.back();
-            _ResetLinkage(chunk);
+            Page& page = mPages.back();
+            _ResetLinkage(page);
 
-            if (!mAvaliable) 
+            if (mAvaliable) 
             {
-                mAvaliable = chunk.Begin;
+                page.Last()->NextAvaliable = mAvaliable;
             }
-            else 
-            {
-                chunk.Last()->NextAvaliable = mAvaliable;
-                mAvaliable = chunk.Begin;
-            }
+            mAvaliable = page.Begin;
         }
 
-        void _ResetLinkage(Chunk& chunk) 
+        void _ResetLinkage(Page& page)
         {
             // initialize blocks' linkage
-            for (size_t i = 0; i < chunk.Capacity - 1; i++)
+            for (size_t i = 0; i < page.Capacity - 1; i++)
             {
-                chunk.Begin[i].NextAvaliable = chunk.Begin + i + 1;
+                page.Begin[i].NextAvaliable = page.Begin + i + 1;
             }
-            chunk.Begin[chunk.Capacity - 1].NextAvaliable = nullptr;
+            page.Begin[page.Capacity - 1].NextAvaliable = nullptr;
         }
 
         // check if there's any problem before recycle block
@@ -338,9 +322,9 @@ namespace MRenderer
             // pointer in the allocated block should be nullptr
             ASSERT(block->IsOccupied() && "block header contaminated");
 
-            for (auto& chunk : mChunks)
+            for (auto& page : mPages)
             {
-                if (chunk.Begin <= block and block < chunk.End) 
+                if (page.Begin <= block and block < page.End) 
                 {
                     // ok, that's our block
                     return true;
@@ -352,21 +336,22 @@ namespace MRenderer
 
         friend void swap(NestedObjectAllocator& lhs, NestedObjectAllocator& rhs)
         {
-            std::swap(lhs.mChunks, rhs.mChunks);
+            std::swap(lhs.mPages, rhs.mPages);
             std::swap(lhs.mAvaliable, rhs.mAvaliable);
-            std::swap(lhs.mSize, rhs.mSize);
+            std::swap(lhs.mOccupied, rhs.mOccupied);
         }
 
     protected:
-        std::vector<Chunk> mChunks;
+        std::vector<Page> mPages;
         Block* mAvaliable;
-        uint32 mSize;
+        uint32 mOccupied;
     };
 
     // An object allocator just like NestObjectAllocator, it supports allocate range of object additionally
     // it doesn't support recycle object, the only way to recycle object is to call the @Reset function
     // it's used for temporary object allocation during a frame or something will exist permanently
     template<typename T>
+        requires std::is_trivially_destructible_v<T>
     class FrameObjectAllocator 
     {
     public:
@@ -456,7 +441,7 @@ namespace MRenderer
         {
             AllocatorStats stats;
 
-            stats.Avaliable += mPages[mPageIndex].Capacity - mPageOffset;
+            stats.Avaliable += PageSize - mPageOffset;
             for (uint32 i = 0; i < mPages.size(); i++) 
             {
                 if (i < mPageOffset) 
@@ -480,7 +465,7 @@ namespace MRenderer
         }
 
     protected:
-        void ExpandIfFull(uint32 nums_to_allocate) 
+        void ExpandIfFull(uint32 nums_to_allocate=1) 
         {
             // simple assertion to ensure the objects to allocate is less than the page size
             ASSERT(nums_to_allocate < PageSize);
@@ -491,7 +476,7 @@ namespace MRenderer
                 )
             {
                 // allocate new page
-                Page* page = _aligned_malloc(sizeof(Page) * PageSize, alignof(Page));
+                Page* page = _aligned_malloc(sizeof(T) * PageSize, alignof(T));
                 mPages.push_back(Page{ page });
 
                 // if the avaliable space is not enough, we will move on to the next page
@@ -504,23 +489,22 @@ namespace MRenderer
 
     protected:
         std::vector<Page> mPages;
-        uint32 mPageIndex;
-        uint32 mPageOffset;
-
+        int mPageIndex;
+        int mPageOffset;
     };
 
     struct ObjectHandle 
     {
-        static constexpr uint32 MaxPageSize = UINT16_MAX;
-        static constexpr uint32 MaxPageNumber = UINT16_MAX;
+        static constexpr uint32 MaxPageSize = (std::numeric_limits<uint16>::max)();
+        static constexpr uint32 MaxPageNumber = (std::numeric_limits<uint16>::max)();
 
         uint16 page_index;
         uint16 offset;
     };
 
 
-    // Same things as LinearObjectAllocator, but the actual object allocation happens in a separate class
-    // Object are allocated in the form of @ObjectHandle, which record the page index and offset
+    // same things as LinearObjectAllocator, but this one don't holds any kind of memory resource.
+    // object are allocated in the form of @ObjectHandle, which record the page index and offset
     class FrameObjectAllocatorMeta
     {
     public:
@@ -592,8 +576,8 @@ namespace MRenderer
         uint16 mPageCapacity;
     };
 
-    // Same things as NestedObjectAllocator, but the actual object allocation happens in a separate class
-    // Object are allocated in the form of @ObjectHandle, which record the page index and offset
+    // same things as NestedObjectAllocator, but the actual object allocation happens in a separate class
+    // object are allocated in the form of @ObjectHandle, which record the page index and offset
     class RandomObjectAllocatorMeta
     {
     public:
@@ -637,95 +621,87 @@ namespace MRenderer
         uint16 mPageCount;
         std::vector<ObjectHandle> mFreeNodes;
     };
-
-
+    // ref: https://www.zhihu.com/search?type=content&q=TLSF
     // this class only for memory management, does not actually hold any resource
     template<uint32_t MinBlockSize = 256, uint32_t FirstLevel = 32, uint32_t SecondLevel = 5>
-    requires (
-        FirstLevel <= 32 && FirstLevel > SecondLevel // bit map is represented by uint32, the first level index needs to be no larger than 32
-        && ((1 << (SecondLevel - 1)) <= sizeof(uint32_t) * CHAR_BIT))// SecondLevel needs to be less than 6, the numbers of second level index is 2^SecondLevel, it needs to be no larger than 32
-    class TLSFMeta 
+        requires (
+    // due to the bitmap limitation, the numbers of first or second level buckets should be not greater than 32.
+    // for the first level, N = @FirstLevel <= 32
+    // for the second level, N = 2 ^ @SecondLevel <= 32, SecondLevel <= 6
+    FirstLevel <= 32 && FirstLevel > SecondLevel
+        && ((1 << (SecondLevel - 1)) <= sizeof(uint32_t) * CHAR_BIT))
+        class TLSFMeta
     {
     private:
         struct Block
         {
-            uint32_t offset; // offset on the heap
-            uint32_t size;
+            uint32_t Offset; // offset on the heap
+            uint32_t Size;
 
-            Block* pre_physical;
-            Block* next_physical; // physical list
-            Block* pre_free;
-            Block* next_free; // segragated listS
-
-            inline void MarkFree() 
-            {
-                pre_free = nullptr;
-            }
-
-            inline void MarkTaken() 
-            {
-                pre_free = this;
-            }
+            Block* PrePhysical;
+            Block* NextPhysical; // physical list
+            Block* PreFree;
+            Block* NextFree; // segregated lists
 
             inline bool IsFree() const
             {
-                return pre_free != this;
+                return PreFree != this;
             }
         };
 
     public:
-        struct Allocation 
+        struct Allocation
         {
             friend TLSFMeta;
         public:
-            uint32_t offset;
-            uint32_t size;
-            uint32_t alignment;
+            uint32_t Offset;
+            uint32_t Size;
+            uint32_t Alignment;
 
         private:
-            Block* block;
-            TLSFMeta* source;
+            Block* BlockPtr;
+            TLSFMeta* Source;
         };
 
-        struct Stats 
+        struct Stats
         {
-            size_t allocated_memory;
-            size_t free_memory;
-            size_t unallocated_memory;
-            size_t allocated_block;
-            size_t free_block;
-            NestedObjectAllocator<Block>::AllocatorStats block_allocator_stats;
-            NestedObjectAllocator<Allocation>::AllocatorStats allocation_allocator_stats;
+            size_t AllocatedMemory;
+            size_t FreeMemory;
+            size_t BackupMemory;
+            size_t PhysicalOccupiedBlock;
+            size_t PhysicalFreeBlock;
+            NestedObjectAllocator<Block>::AllocatorStats BlockAllocatorStats;
+            NestedObjectAllocator<Allocation>::AllocatorStats AllocationAllocatorStats;
         };
 
     public:
         explicit TLSFMeta(uint32_t size)
         {
-            mFreeOffset = 0; 
+            mFreeOffset = 0;
             mSize = size;
         }
 
         TLSFMeta(const TLSFMeta& other) = delete;
 
         TLSFMeta(TLSFMeta&& other)
-            :TLSFMeta(mSize)
+            :TLSFMeta(0)
         {
             swap(*this, other);
         }
 
-        TLSFMeta& operator=(TLSFMeta other) 
+        TLSFMeta& operator=(TLSFMeta other)
         {
             swap(*this, other);
             return *this;
         }
 
-        friend void swap(TLSFMeta& lhs, TLSFMeta& rhs) 
+        friend void swap(TLSFMeta& lhs, TLSFMeta& rhs)
         {
             using std::swap;
             swap(lhs.mSize, rhs.mSize);
             swap(lhs.mFreeOffset, rhs.mFreeOffset);
-            swap(lhs.mFirst, rhs.mFirst);
-            swap(lhs.mLast, rhs.mLast);
+            swap(lhs.mPhysicalFirst, rhs.mPhysicalFirst);
+            swap(lhs.mPhysicalLast, rhs.mPhysicalLast);
             swap(lhs.mBlockAllocator, rhs.mBlockAllocator);
             swap(lhs.mAllocationAllocator, rhs.mAllocationAllocator);
             swap(lhs.mFreeList, rhs.mFreeList);
@@ -734,147 +710,146 @@ namespace MRenderer
         Allocation* Allocate(uint32_t size, uint32_t alignment)
         {
             ASSERT(size < mSize);
-
-            ASSERT((alignment & (alignment - 1)) == 0 && alignment <= size); // alignment must be power of 2, or AlignUp will malfunction
+            ASSERT((alignment & (alignment - 1)) == 0); // alignment must be power of 2, or AlignUp will malfunction
+            ASSERT(size >= MinBlockSize);
 
             // find a free block
-            Block* block = FindFreeBlock(size, alignment);
-            if (!block) 
+            Block* block_ptr = FindFreeBlock(size, alignment);
+            if (!block_ptr)
             {
                 return nullptr;
             }
 
-            RemoveBlock(block);
+            RemoveBlock(block_ptr);
 
-            uint32_t begin = block->offset;
-            uint32_t align_left = AlignUp(block->offset, alignment);
+            uint32_t begin = block_ptr->Offset;
+            uint32_t align_left = AlignUp(block_ptr->Offset, alignment);
             uint32_t align_right = align_left + AlignUp(size, alignment);
-            uint32_t end = block->offset + block->size;
+            uint32_t end = block_ptr->Offset + block_ptr->Size;
+            ASSERT(align_right <= end);
 
             // there are some space unused due to memory alignment, split it into smaller part for later usage
-            if (align_left - begin >= MinBlockSize) 
+            if (align_left - begin >= MinBlockSize)
             {
                 Block* split = mBlockAllocator.Allocate();
-                
-                split->offset = begin;
-                split->size = align_left - begin;
-                block->offset = align_left;
-                block->size -= split->size;
 
-                split->pre_physical = block->pre_physical;
-                split->next_physical = block;
-                block->pre_physical = split;
+                split->Offset = begin;
+                split->Size = align_left - begin;
+                block_ptr->Offset = align_left;
+                block_ptr->Size -= split->Size;
 
-                if (split->pre_physical)
+                split->PrePhysical = block_ptr->PrePhysical;
+                split->NextPhysical = block_ptr;
+                block_ptr->PrePhysical = split;
+
+                if (split->PrePhysical)
                 {
-                    split->pre_physical->next_physical = split;
+                    split->PrePhysical->NextPhysical = split;
                 }
 
                 InsertBlock(split);
 
-                if (block == mFirst) 
+                if (block_ptr == mPhysicalFirst)
                 {
-                    mFirst = block;
+                    mPhysicalFirst = split;
                 }
             }
 
-            // the block is to large for this allocation, split the rest part into a minor block
+            // the block is too large for this allocation, split the rest part into a minor block
             if (end - align_right >= MinBlockSize)
             {
                 Block* split = mBlockAllocator.Allocate();
-                
-                split->size = end - align_right;
-                split->offset = align_right;
-                block->size -= split->size;
 
-                
-                split->pre_physical = block;
-                split->next_physical = block->next_physical;
-                block->next_physical = split;
+                split->Size = end - align_right;
+                split->Offset = align_right;
+                block_ptr->Size -= split->Size;
 
-                if (split->next_physical) 
+                split->PrePhysical = block_ptr;
+                split->NextPhysical = block_ptr->NextPhysical;
+                block_ptr->NextPhysical = split;
+
+                if (split->NextPhysical)
                 {
-                    split->next_physical->pre_physical = split;
+                    split->NextPhysical->PrePhysical = split;
                 }
 
                 InsertBlock(split);
 
-                if (block == mLast) 
+                if (block_ptr == mPhysicalLast)
                 {
-                    mLast = block;
+                    mPhysicalLast = split;
                 }
             }
 
             // ok, we are good to go
-            Allocation* allocation = mAllocationAllocator.Allocate();
-            allocation->offset = AlignUp(block->offset, alignment);
-            allocation->size = size;
-            allocation->block = block;
-            allocation->source = this;
-            allocation->alignment = alignment;
-            ASSERT(allocation->offset + size <= block->offset + block->size);
+            Allocation* allocation_ptr = mAllocationAllocator.Allocate();
+            allocation_ptr->Offset = AlignUp(block_ptr->Offset, alignment);
+            allocation_ptr->Size = size;
+            allocation_ptr->BlockPtr = block_ptr;
+            allocation_ptr->Source = this;
+            allocation_ptr->Alignment = alignment;
 
-            return allocation;
+            return allocation_ptr;
         }
 
-        void Free(Allocation* allocation) 
+        void Free(Allocation* allocation_ptr)
         {
             // check if the allocation belong to this one and is it still valid
-            ASSERT(allocation && allocation->source == this && allocation->offset + allocation->size <= mSize
-                && allocation->block && !allocation->block->IsFree() && allocation->block->offset + allocation->block->size <= mSize);
-            Block* block = allocation->block;
+            ASSERT(allocation_ptr && allocation_ptr->Source == this && allocation_ptr->Offset + allocation_ptr->Size <= mSize
+                && allocation_ptr->BlockPtr && !allocation_ptr->BlockPtr->IsFree() && allocation_ptr->BlockPtr->Offset + allocation_ptr->BlockPtr->Size <= mSize);
+            Block* block_ptr = allocation_ptr->BlockPtr;
 
             // merge with the previous block if it's free
-            if (block->pre_physical && block->pre_physical->IsFree())
+            if (block_ptr->PrePhysical && block_ptr->PrePhysical->IsFree())
             {
-                Block* prev_block = block->pre_physical;
-                if (prev_block == mFirst) 
+                Block* prev_block = block_ptr->PrePhysical;
+                if (prev_block == mPhysicalFirst)
                 {
-                    mFirst = block;
+                    mPhysicalFirst = block_ptr;
                 }
 
-                block->pre_physical = prev_block->pre_physical;
-                if (prev_block->pre_physical)
+                block_ptr->PrePhysical = prev_block->PrePhysical;
+                if (prev_block->PrePhysical)
                 {
-                    prev_block->pre_physical->next_physical = block;
+                    prev_block->PrePhysical->NextPhysical = block_ptr;
                 }
 
-                block->offset = prev_block->offset;
-                block->size += prev_block->size;
-                
+                block_ptr->Offset = prev_block->Offset;
+                block_ptr->Size += prev_block->Size;
+
                 RemoveBlock(prev_block);
                 mBlockAllocator.Free(prev_block);
             }
 
             // merge with next block if it's free
-            if (block->next_physical && block->next_physical->IsFree())
+            if (block_ptr->NextPhysical && block_ptr->NextPhysical->IsFree())
             {
-                Block* next_block = block->next_physical;
-                if (next_block == mLast) 
+                Block* next_block = block_ptr->NextPhysical;
+                if (next_block == mPhysicalLast)
                 {
-                    mLast = block;
+                    mPhysicalLast = block_ptr;
                 }
 
-                block->next_physical = next_block->next_physical;
-                if (next_block->next_physical)
+                block_ptr->NextPhysical = next_block->NextPhysical;
+                if (next_block->NextPhysical)
                 {
-                    next_block->next_physical->pre_physical = block;
+                    next_block->NextPhysical->PrePhysical = block_ptr;
                 }
 
-                block->size += next_block->size;
+                block_ptr->Size += next_block->Size;
 
                 RemoveBlock(next_block);
                 mBlockAllocator.Free(next_block);
             }
-            
-            InsertBlock(block);
 
-            mAllocationAllocator.Free(allocation);
+            InsertBlock(block_ptr);
+
+            mAllocationAllocator.Free(allocation_ptr);
         }
 
         inline uint32_t MaxAllocationSize() const
         {
-            return 1U << (FirstLevel - 1) < mSize ? 1U << (FirstLevel - 1) : mSize;
+            return Min(1U << (FirstLevel - 1), mSize);
         }
 
         inline uint32_t Size()
@@ -882,202 +857,231 @@ namespace MRenderer
             return mSize;
         }
 
-        inline void Reset() 
+        inline void Reset()
         {
             *this = std::move(TLSFMeta(mSize));
         }
 
-        Stats GetStats() 
+        Stats GetStats()
         {
             size_t allocated_block = 0;
             size_t free_block = 0;
             size_t free_space = 0;
-            for (int i = 0; i < FirstLevel * (1 << SecondLevel); i++) 
+            for (int i = 0; i < FirstLevel * (1 << SecondLevel); i++)
             {
-                for (Block* p = mFreeList[i]; p; p = p->next_free) 
+                for (Block* p = mFreeList[i]; p; p = p->NextFree)
                 {
-                    if (p->IsFree()) 
+                    if (p->IsFree())
                     {
-                        free_space += p->size;
+                        free_space += p->Size;
                     }
                 }
             }
 
             size_t allocated = 0;
-            size_t free_space_2 = 0;
-            for (Block* p = mFirst; p; p = p->next_physical) 
+            size_t free_space2 = 0;
+            for (Block* p = mPhysicalFirst; p; p = p->NextPhysical)
             {
-                if (p->IsFree()) 
+                if (p->IsFree())
                 {
-                    free_space_2 += p->size;
+                    free_space2 += p->Size;
                     free_block++;
                 }
-                else 
+                else
                 {
-                    allocated += p->size;
+                    allocated += p->Size;
                     allocated_block++;
                 }
             }
-            
-            ASSERT(free_space == free_space_2);
 
-            return Stats{ allocated, free_space, mSize - mFreeOffset, allocated_block, free_block, mBlockAllocator.GetStats(), mAllocationAllocator.GetStats()};
+            ASSERT(free_space == free_space2);
+
+            return Stats{
+                .AllocatedMemory = allocated,
+                .FreeMemory = free_space,
+                .BackupMemory = mSize - mFreeOffset,
+                .PhysicalOccupiedBlock = allocated_block,
+                .PhysicalFreeBlock = free_block,
+                .BlockAllocatorStats = mBlockAllocator.GetStats(),
+                .AllocationAllocatorStats = mAllocationAllocator.GetStats()
+            };
         }
 
     protected:
         Block* FindFreeBlock(uint32_t size, uint32_t alignment)
         {
-            auto [fli, sli] = Mapping(size);
-            uint32_t bucket_index = MakeIndex(fli, sli);
-            
-            // best match
-            for (Block* p = mFreeList[bucket_index]; p != nullptr; p = p->next_free)
+            // best match bucket
+            auto [best_fli, best_sli] = Mapping(size);
+
+            // search buckets from the best match one
+            uint32_t fli_map = mBitMapFli & (~0u << best_fli); // bitmap of all fli ¡Ý best_fli
+            while (fli_map)
             {
-                if (CheckBlock(p, size, alignment)) 
+                // bitmap indicate where the free blocks are
+                uint32_t fli = FFS(fli_map);
+                fli_map &= ~(1u << fli);
+
+                uint32_t sli_map = mBitMapSli[fli];
+                if (fli == best_fli)
                 {
-                    return p;
+                    sli_map &= (~0u << best_sli); // mask out all sli < best_sli when in the first fli
                 }
-            }
 
-            // nothing found, try to make a new block
-            Block* block = MakeNewBlock(size, alignment);
-            if (block) 
-            {
-                return block;
-            }
-
-            // search larger bucket, see if there's any blocks left
-            for (uint32_t i = bucket_index + 1; i < FirstLevel * (1 << SecondLevel); i++) 
-            {
-                Block* head = mFreeList[i];
-                while (head) 
+                // iterate over second-level buckets indicated by sli_map
+                while (sli_map)
                 {
-                    if (CheckBlock(head, size, alignment)) 
+                    uint32_t sli = FFS(sli_map);
+                    sli_map &= ~(1u << sli);
+
+                    // search all blocks in this bucket, see if it satisfy the requirement
+                    for (Block* block = mFreeList[MakeIndex(fli, sli)]; block; block = block->NextFree)
                     {
-                        return head;
+                        if (CheckBlock(block, size, alignment))
+                            return block;
                     }
-                    head = head->next_free;
                 }
+            }
+
+            // nothing is found, try to make a new block
+            Block* block_ptr = MakeNewBlock(size, alignment);
+            if (block_ptr)
+            {
+                return block_ptr;
             }
 
             // out of memory
             return nullptr;
         }
 
-        inline bool CheckBlock(Block* block, uint32_t size, uint32_t alignment)
+        // check if the given block satisfy the required size and alignment.
+        inline bool CheckBlock(Block* block_ptr, uint32_t size, uint32_t alignment)
         {
-            //it's sufficient for the offset to align with the alignment. Aligning the size is optional
-            uint32_t required_size = AlignUp(block->offset, alignment) - block->offset + size;
-            return block->size >= required_size;
+            uint32_t required_size = AlignUp(block_ptr->Offset, alignment) - block_ptr->Offset + AlignUp(size, alignment);
+            return block_ptr->Size >= required_size;
         }
 
-        void RemoveBlock(Block* block)
+        void RemoveBlock(Block* block_ptr)
         {
-            ASSERT(block->IsFree());
-        
-            // remove block from the segragated list
-            if (block->pre_free)
+            ASSERT(block_ptr->IsFree());
+
+            // remove block from the segregated list
+            if (block_ptr->PreFree)
             {
-                block->pre_free->next_free = block->next_free;
+                block_ptr->PreFree->NextFree = block_ptr->NextFree;
             }
 
-            if (block->next_free)
+            if (block_ptr->NextFree)
             {
-                block->next_free->pre_free = block->pre_free;
+                block_ptr->NextFree->PreFree = block_ptr->PreFree;
             }
-            block->MarkTaken();
 
-            auto [fli, sli] = Mapping(block->size);
+            // PreFree pointer of occupied block is itself
+            block_ptr->PreFree = block_ptr;
+
+            auto [fli, sli] = Mapping(block_ptr->Size);
             uint32_t index = MakeIndex(fli, sli);
 
-            if (mFreeList[index] == block) 
+            if (mFreeList[index] == block_ptr)
             {
-                mFreeList[index] = block->next_free;
-                if (!mFreeList[index]) 
+                mFreeList[index] = block_ptr->NextFree;
+            }
+
+            if (!mFreeList[index])
+            {
+                mBitMapSli[fli] &= ~(1 << sli);
+
+                if (mBitMapSli[fli] == 0)
                 {
-                    mBitMapSLI[fli] &= 1 << sli;
-                    mBitMapFLI &= ~(1 << fli);
+                    mBitMapFli &= ~(1 << fli);
                 }
             }
         }
 
-        void InsertBlock(Block* block)
+        void InsertBlock(Block* block_ptr)
         {
-            block->MarkFree();
-
             // insert block as the head of the segregated list
-            auto [fli, sli] = Mapping(block->size);
+            auto [fli, sli] = Mapping(block_ptr->Size);
 
-            block->pre_free = nullptr;
-            block->next_free = mFreeList[MakeIndex(fli, sli)];
-            if (block->next_free)
+            block_ptr->PreFree = nullptr;
+            block_ptr->NextFree = mFreeList[MakeIndex(fli, sli)];
+            if (block_ptr->NextFree)
             {
-                block->next_free->pre_free = block;
+                block_ptr->NextFree->PreFree = block_ptr;
             }
-            mFreeList[MakeIndex(fli, sli)] = block;
+            mFreeList[MakeIndex(fli, sli)] = block_ptr;
 
             // update bit map
-            mBitMapFLI |= 1 << fli;
-            mBitMapSLI[fli] |= 1 << sli;
+            mBitMapFli |= 1 << fli;
+            mBitMapSli[fli] |= 1 << sli;
         }
 
         Block* MakeNewBlock(uint32_t size, uint32_t alignment)
         {
-            // make size and offset match up with the alignment
-            // aligning size with alignment is optional
-            uint32_t offset = AlignUp(mFreeOffset, alignment);
-            size = AlignUp(size, alignment) + offset - mFreeOffset; 
+            // the alignment may not match up with @mFreeOffset, extra memory will be required if this happen
+            size = AlignUp(mFreeOffset, alignment) - mFreeOffset + AlignUp(size, alignment);
 
-            if (size > (mSize - mFreeOffset)) 
+            if (size > (mSize - mFreeOffset))
             {
                 // no space left
                 return nullptr;
             }
 
-            Block* block = mBlockAllocator.Allocate();
-            block->offset = offset;
-            block->size = size;
-            block->pre_free = nullptr;
-            block->next_free = nullptr;
-            
-            mFreeOffset = offset + size;
-            if (!mLast && !mFirst) 
+            Block* block_ptr = mBlockAllocator.Allocate();
+            block_ptr->Offset = mFreeOffset;
+            block_ptr->Size = size;
+            block_ptr->PreFree = nullptr;
+            block_ptr->NextFree = nullptr;
+
+            mFreeOffset = mFreeOffset + size;
+            if (!mPhysicalLast && !mPhysicalFirst)
             {
-                mFirst = mLast = block;
-                block->pre_physical = nullptr;
-                block->next_physical = nullptr;
+                mPhysicalFirst = mPhysicalLast = block_ptr;
+                block_ptr->PrePhysical = nullptr;
+                block_ptr->NextPhysical = nullptr;
             }
-            else if(mLast && mFirst)
+            else if (mPhysicalLast && mPhysicalFirst)
             {
-                mLast->next_physical = block;
-                block->pre_physical = mLast;
-                block->next_physical = nullptr;
-                mLast = block;
+                mPhysicalLast->NextPhysical = block_ptr;
+                block_ptr->PrePhysical = mPhysicalLast;
+                block_ptr->NextPhysical = nullptr;
+                mPhysicalLast = block_ptr;
             }
-            else 
+            else
             {
                 ASSERT("Unexpected Code");
             }
 
-            InsertBlock(block);
-            return block;
-        }
-    
-    protected:
-        static std::pair<uint32_t, uint32_t> Mapping(uint32_t size) 
-        {
-            uint32_t fli = FLS(size);
-            uint32_t sli = (size >> (fli - SecondLevel)) ^ (1 << SecondLevel);
-            return std::pair(fli, sli);
+            InsertBlock(block_ptr);
+            return block_ptr;
         }
 
-        static inline uint32_t MakeIndex(uint32_t fli, uint32_t sli) 
+    protected:
+        static std::pair<uint32_t, uint32_t> Mapping(uint32_t size)
         {
-            return fli * SecondLevel + sli;
+            ASSERT(size);
+
+            if (size < (1 << SecondLevel))
+            {
+                uint32_t fli = 0;
+                uint32_t sli = size;
+
+                return std::pair(fli, sli);
+            }
+            else
+            {
+                uint32_t fli = FLS(size);
+                uint32_t sli = (size >> (fli - SecondLevel)) & ((1U << SecondLevel) - 1);
+                return std::pair(fli, sli);
+            }
+        }
+
+        static inline uint32_t MakeIndex(uint32_t fli, uint32_t sli)
+        {
+            return fli * (1 << SecondLevel) + sli;
         }
 
         // size to index of the segregated list
-        static inline uint32_t MakeSizeIndex(uint32_t size, uint32_t alignemnt) 
+        static inline uint32_t MakeSizeIndex(uint32_t size, uint32_t alignment)
         {
             auto [fli, sli] = Mapping(size);
             return MakeIndex(fli, sli);
@@ -1087,13 +1091,14 @@ namespace MRenderer
         NestedObjectAllocator<Block> mBlockAllocator;
         NestedObjectAllocator<Allocation> mAllocationAllocator;
 
-        Block* mFreeList[FirstLevel * (1 << SecondLevel)] = {};
-        Block* mLast = nullptr; // head of the physical list
-        Block* mFirst = nullptr; // tail of the physical list
+        std::array<Block*, FirstLevel* (1 << SecondLevel)> mFreeList = {};
+        Block* mPhysicalFirst = nullptr; // head of the physical list
+        Block* mPhysicalLast = nullptr; // tail of the physical list
 
-        uint32_t mBitMapSLI[FirstLevel] = {};
-        uint32_t mBitMapFLI = 0;
-        uint32_t mFreeOffset = 0; // [mFreeoffset, mSize) is the area never been allocated
+        std::array<uint32_t, FirstLevel> mBitMapSli = {}; // second level bitmap, same as @mBitMapFli
+        uint32_t mBitMapFli = 0; // first level bitmap, 0 means the bucket is empty, 1 means the bucket has free blocks
+        uint32_t mFreeOffset = 0; // [mFreeOffset, mSize) is the area never been allocated
         uint32_t mSize = 0;
     };
+
 }

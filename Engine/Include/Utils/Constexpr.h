@@ -36,20 +36,38 @@ namespace MRenderer
         }
     }
 
-    // find index of the left-most 1 bit in num
-    template<std::integral T>
-    constexpr inline int FLS(T num)
+    // find index of the highest 1 bit in @num
+    constexpr inline uint32 FLS(uint32 num)
     {
         int bit_size = sizeof(uint32_t) * CHAR_BIT;
-        for (int i = bit_size; i > 0; i--)
+        for (int i = bit_size - 1; i > 0; i--)
         {
-            T mask = 1 << (i - 1);
+            uint32 mask = 1 << i;
             if (mask & num)
             {
                 return i;
             }
         }
-        return -1;
+
+        ASSERT(false);
+        return 0;
+    }
+
+    // find index of the lowest 1 bit in @num
+    constexpr inline uint32 FFS(uint32 num)
+    {
+        int bit_size = sizeof(uint32_t) * CHAR_BIT;
+        for (int i = 0; i < bit_size; i++)
+        {
+            uint32 mask = 1 << i;
+            if (mask & num)
+            {
+                return i;
+            }
+        }
+
+        ASSERT(false);
+        return 0;
     }
 
     // compile time unique id

@@ -81,31 +81,28 @@ TEST(TLSF, AlignmentTest)
 
     #define ASSERT_ALLOCATION(allocation, assert_size, assert_alignment)\
     ASSERT_NE((allocation), nullptr);\
-    ASSERT_EQ((allocation)->size, (assert_size));\
-    ASSERT_EQ((allocation)->offset % (assert_alignment), 0);\
-    ASSERT_EQ((allocation)->alignment, (assert_alignment));\
+    ASSERT_EQ((allocation)->Size, (assert_size));\
+    ASSERT_EQ((allocation)->Offset % (assert_alignment), 0);\
+    ASSERT_EQ((allocation)->Alignment, (assert_alignment));\
 
     std::vector<Allocation*> alloc;
-    alloc.push_back(meta.Allocate(256, 16));
-    ASSERT_ALLOCATION(alloc.back(), 256, 16);
-
-    alloc.push_back(meta.Allocate(256, 32));
-    ASSERT_ALLOCATION(alloc.back(), 256, 32);
-
-    alloc.push_back(meta.Allocate(256, 64));
-    ASSERT_ALLOCATION(alloc.back(), 256, 64);
-
-    alloc.push_back(meta.Allocate(256, 32));
-    ASSERT_ALLOCATION(alloc.back(), 256, 32);
-
-    alloc.push_back(meta.Allocate(256, 128));
-    ASSERT_ALLOCATION(alloc.back(), 256, 128);
 
     alloc.push_back(meta.Allocate(256, 256));
     ASSERT_ALLOCATION(alloc.back(), 256, 256);
 
-    ASSERT_EQ(meta.GetStats().allocated_block, alloc.size());
-    ASSERT_EQ(meta.GetStats().free_block, 0);
+    alloc.push_back(meta.Allocate(512, 512));
+    ASSERT_ALLOCATION(alloc.back(), 512, 512);
+
+    alloc.push_back(meta.Allocate(2048, 2048));
+    ASSERT_ALLOCATION(alloc.back(), 2048, 2048);
+
+    // 3 occupiued block + 2 free block due to aligment waste
+    // |--block0--256b--||--fragment--256||---------block1--512b-----------||------------------------fragment--1024b---------------------------|
+    // |--------------------------------------------------block2--2048b------------------------------------------------------------------------|
+    ASSERT_EQ(meta.GetStats().PhysicalOccupiedBlock, alloc.size());
+    ASSERT_EQ(meta.GetStats().PhysicalFreeBlock, 2);
+    ASSERT_EQ(meta.GetStats().FreeMemory, 256 + 1024);
+    ASSERT_EQ(meta.GetStats().AllocatedMemory, 256 + 512 + 2048);
 
     while (!alloc.empty())
     {
@@ -113,32 +110,25 @@ TEST(TLSF, AlignmentTest)
         alloc.pop_back();
     }
 
-    ASSERT_EQ(meta.GetStats().allocated_block, 0);
-    ASSERT_EQ(meta.GetStats().free_block, 1);   // all free block will merge into one
+    ASSERT_EQ(meta.GetStats().PhysicalOccupiedBlock, 0);
+    ASSERT_EQ(meta.GetStats().PhysicalFreeBlock, 1);   // all free block will merge into one
+
+    alloc.push_back(meta.Allocate(2048, 2048));
+    ASSERT_ALLOCATION(alloc.back(), 2048, 2048);
+
+    alloc.push_back(meta.Allocate(512, 512));
+    ASSERT_ALLOCATION(alloc.back(), 512, 512);
 
     alloc.push_back(meta.Allocate(256, 256));
     ASSERT_ALLOCATION(alloc.back(), 256, 256);
 
-    alloc.push_back(meta.Allocate(256, 128));
-    ASSERT_ALLOCATION(alloc.back(), 256, 128);
 
-    alloc.push_back(meta.Allocate(256, 64));
-    ASSERT_ALLOCATION(alloc.back(), 256, 64);
-
-    alloc.push_back(meta.Allocate(256, 32));
-    ASSERT_ALLOCATION(alloc.back(), 256, 32);
-
-    alloc.push_back(meta.Allocate(256, 64));
-    ASSERT_ALLOCATION(alloc.back(), 256, 64);
-
-    alloc.push_back(meta.Allocate(256, 32));
-    ASSERT_ALLOCATION(alloc.back(), 256, 32);
-
-    alloc.push_back(meta.Allocate(256, 16));
-    ASSERT_ALLOCATION(alloc.back(), 256, 16);
-
-    ASSERT_EQ(meta.GetStats().allocated_block, alloc.size());
-    ASSERT_EQ(meta.GetStats().free_block, 1); // the previous merged block will not be allocated during above allocation
+    // |--------------------------------------------------block2--2048b------------------------------------------------------------------------|
+    // |---------block1--512b-----------||--block0--256b--||-------------------------fragment--1280b-------------------------------------------|
+    ASSERT_EQ(meta.GetStats().PhysicalOccupiedBlock, alloc.size());
+    ASSERT_EQ(meta.GetStats().PhysicalFreeBlock, 1);
+    ASSERT_EQ(meta.GetStats().FreeMemory, 1280);
+    ASSERT_EQ(meta.GetStats().AllocatedMemory, 256 + 512 + 2048);
 
     while (!alloc.empty())
     {
@@ -146,38 +136,8 @@ TEST(TLSF, AlignmentTest)
         alloc.pop_back();
     }
 
-    ASSERT_EQ(meta.GetStats().allocated_block, 0);
-    ASSERT_EQ(meta.GetStats().free_block, 1); // every blocks will merge into one agine
-
-    alloc.push_back(meta.Allocate(64, 16));
-    ASSERT_ALLOCATION(alloc.back(), 64, 16);
-
-    alloc.push_back(meta.Allocate(64, 32));
-    ASSERT_ALLOCATION(alloc.back(), 64, 32);
-
-    alloc.push_back(meta.Allocate(64, 64));
-    ASSERT_ALLOCATION(alloc.back(), 64, 64);
-
-    ASSERT_EQ(meta.GetStats().allocated_block, alloc.size());
-    ASSERT_EQ(meta.GetStats().free_block, 1);
-
-    while (!alloc.empty())
-    {
-        meta.Free(alloc.back());
-        alloc.pop_back();
-    }
-
-    ASSERT_EQ(meta.GetStats().allocated_block, 0);
-    ASSERT_EQ(meta.GetStats().free_block, 1);
-
-    alloc.push_back(meta.Allocate(1024, 256));
-    ASSERT_ALLOCATION(alloc.back(), 1024, 256);
-
-    alloc.push_back(meta.Allocate(2048, 512));
-    ASSERT_ALLOCATION(alloc.back(), 2048, 512);
-
-    alloc.push_back(meta.Allocate(4096, 1024));
-    ASSERT_ALLOCATION(alloc.back(), 4096, 1024);
+    ASSERT_EQ(meta.GetStats().PhysicalOccupiedBlock, 0);
+    ASSERT_EQ(meta.GetStats().PhysicalFreeBlock, 1); // every blocks will merge into one agine
 }
 
 TEST(TLSF, SplitMergeTest)
@@ -191,18 +151,18 @@ TEST(TLSF, SplitMergeTest)
     decltype(meta)::Stats stats;
     std::vector<Allocation*> alloc;
 
-    #define ASSERT_STATS(delta_allocated, delta_freed, delta_unallocated, allocated_block_count, free_block_count)\
+    #define ASSERT_STATS(delta_allocated, delta_freed, delta_unallocated, num_occupied_block, num_free_block)\
     allocated += (delta_allocated);\
     freed += (delta_freed);\
     unallocated += (delta_unallocated);\
     stats = meta.GetStats(); \
-    ASSERT_EQ(stats.allocated_memory, allocated); \
-    ASSERT_EQ(stats.free_memory, freed); \
-    ASSERT_EQ(stats.unallocated_memory, unallocated); \
-    ASSERT_EQ(stats.allocated_block, (allocated_block_count)); \
-    ASSERT_EQ(stats.free_block, (free_block_count)); \
-    ASSERT_EQ(stats.allocated_memory + stats.free_memory + stats.unallocated_memory, meta.Size()); \
-    ASSERT_EQ(stats.block_allocator_stats.Occupied, stats.allocated_block + stats.free_block);\
+    ASSERT_EQ(stats.AllocatedMemory, allocated); \
+    ASSERT_EQ(stats.FreeMemory, freed); \
+    ASSERT_EQ(stats.BackupMemory, unallocated); \
+    ASSERT_EQ(stats.PhysicalOccupiedBlock, (num_occupied_block)); \
+    ASSERT_EQ(stats.PhysicalFreeBlock, (num_free_block)); \
+    ASSERT_EQ(stats.AllocatedMemory + stats.FreeMemory + stats.BackupMemory, meta.Size()); \
+    ASSERT_EQ(stats.BlockAllocatorStats.Occupied, stats.PhysicalOccupiedBlock + stats.PhysicalFreeBlock);\
 
     // MergeBlock test
     alloc.push_back(meta.Allocate(256, 16));

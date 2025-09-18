@@ -220,7 +220,7 @@ namespace MRenderer
             (
                 mDevice->CreatePlacedResource(
                     mPages[heap_index].Get(),
-                    meta_allocation->offset,
+                    meta_allocation->Offset,
                     &desc.resource_desc,
                     desc.initial_state,
                     use_default_value ? &desc.defalut_value : nullptr,
