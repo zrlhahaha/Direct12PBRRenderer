@@ -4,36 +4,21 @@
 
 namespace MRenderer 
 {
-    void UploadBuffer::Upload(const void* data, size_t data_size)
+    void UploadBuffer::Upload(const void* data, uint32 data_size)
     {
-        ASSERT(resource && mapped && data_size <= size);
-        memcpy(mapped, data, data_size);
+        ASSERT(Resource && Mapped && data_size <= Size);
+        void* start = reinterpret_cast<char*>(Mapped) + Offset;
+        memcpy(start, data, data_size);
     }
 
-    UploadBufferPool::~UploadBufferPool()
-    {
-        for (auto& page: mPages)
-        {
-            page.resource->Release();
-            page.resource = nullptr;
-        }
-
-        for (auto& container: mLargePages)
-        {
-            for (auto& page: container.second.pages)
-            {
-                page.resource->Release();
-                page.resource = nullptr;
-                page.mapped = nullptr;
-            }
-        }
-    }
-
-    UploadBuffer UploadBufferPool::Allocate(ID3D12Device* device, uint32 size)
+    // ref: https://learn.microsoft.com/en-us/windows/win32/direct3d12/upload-and-readback-of-texture-data
+    // to see the alignment for different resource, check out reference link.
+    // generally speaking, 256 for cbuffer, 512 for texture
+    UploadBuffer UploadBufferPool::Allocate(ID3D12Device* device, uint32 size, uint32 alignment)
     {
         if (size <= PageSize) 
         {
-            return AllocateSmallBuffer(device, size);
+            return AllocateSmallBuffer(device, size, alignment);
         }
         else 
         {
@@ -43,16 +28,9 @@ namespace MRenderer
 
     void UploadBufferPool::CleanUp()
     {
-        // release upload buffers that were not used in this frame
+        // release pages that were not used in this frame
         // small pages
-        size_t erase_begin = mOffset ? mPageIndex + 1 : mPageIndex;
-        for (size_t i = erase_begin; i < mPages.size(); i++)
-        {
-            mPages[i].resource->Release();
-            mPages[i].resource = nullptr;
-            mPages[i].mapped = nullptr;
-        }
-
+        uint32 erase_begin = mOffset ? mPageIndex + 1 : mPageIndex; // release current page if it's untouched
         if (erase_begin < mPages.size()) 
         {
             mPages.erase(mPages.begin() + erase_begin, mPages.end());
@@ -65,17 +43,10 @@ namespace MRenderer
         for (auto it = mLargePages.begin(); it != mLargePages.end();) 
         {
             LargePageContainer& container = it->second;
-            auto& pages = container.pages;
+            auto& pages = container.Pages;
 
-            // remove large page if it's not used in this frame
-            for (size_t i = container.page_index; i < pages.size(); i++)
-            {
-                pages[i].resource->Release();
-                pages[i].resource = nullptr;
-                pages[i].mapped = nullptr;
-            }
-            pages.erase(pages.begin() + container.page_index, pages.end());
-            container.page_index = 0;
+            pages.erase(pages.begin() + container.PageIndex, pages.end());
+            container.PageIndex = 0;
 
             // remove empty bucket
             if (pages.empty()) 
@@ -89,13 +60,16 @@ namespace MRenderer
         }
     }
 
-    // this is for small gpu resources, they will use a suballocation of a buffer as their upload buffer
-    UploadBuffer UploadBufferPool::AllocateSmallBuffer(ID3D12Device* device, uint32 size)
+    // ref: https://learn.microsoft.com/en-us/windows/win32/direct3d12/uploading-resources
+    // this is for small gpu resources, the upload buffer will be a suballocator from a larger buffer
+    UploadBuffer UploadBufferPool::AllocateSmallBuffer(ID3D12Device* device, uint32 size, uint32 alignment)
     {
         ASSERT(size <= PageSize);
+        //D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT
+        uint32 require_size = AlignUp(mOffset, alignment) - mOffset + size;
 
-        // small buffer
-        if (mPageIndex < mPages.size() && mOffset + size > PageSize) 
+        // advance page to the next one
+        if (mOffset + require_size > PageSize) 
         {
             mPageIndex++;
             mOffset = 0;
@@ -103,9 +77,8 @@ namespace MRenderer
 
         if (mPageIndex < mPages.size())
         {
-            void* mapped = static_cast<char*>(mPages[mPageIndex].mapped) + mOffset;
-            UploadBuffer allocation(mPages[mPageIndex].resource, mapped, mOffset, size);
-            mOffset += size;
+            UploadBuffer allocation(mPages[mPageIndex].Resource.Get(), mPages[mPageIndex].Mapped, AlignUp(mOffset, alignment), size);
+            mOffset += require_size;
             return allocation;
         }
         else if (mPageIndex == mPages.size())
@@ -124,7 +97,7 @@ namespace MRenderer
             ));
 
             void* mapped = nullptr;
-            res->Map(0, nullptr, &mapped);
+            ThrowIfFailed(res->Map(0, nullptr, &mapped));
             mPages.emplace_back(res, mapped);
 
             mOffset += size;
@@ -142,13 +115,13 @@ namespace MRenderer
     {
         ASSERT(size > PageSize);
         auto& container = mLargePages[size];
-        if (container.page_index < container.pages.size())
+        if (container.PageIndex < container.Pages.size())
         {
-            auto& page = container.pages[container.page_index];
-            container.page_index++;
-            return UploadBuffer(page.resource, page.mapped, 0, size);
+            auto& page = container.Pages[container.PageIndex];
+            container.PageIndex++;
+            return UploadBuffer(page.Resource.Get(), page.Mapped, 0, size);
         }
-        else if(container.page_index == container.pages.size())
+        else if(container.PageIndex == container.Pages.size())
         {
             ID3D12Resource* resource;
             auto heap_property = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -166,8 +139,8 @@ namespace MRenderer
             void* mapped = nullptr;
             resource->Map(0, nullptr, &mapped);
 
-            container.pages.push_back({ resource, mapped});
-            container.page_index++;
+            container.Pages.push_back({ resource, mapped});
+            container.PageIndex++;
             return UploadBuffer(resource, mapped, 0, size);
         }
         else 
@@ -182,9 +155,9 @@ namespace MRenderer
     {
     }
 
-    UploadBuffer UploadBufferAllocator::Allocate(uint32 size)
+    UploadBuffer UploadBufferAllocator::Allocate(uint32 size, uint32 alignment)
     {
-        return mPools[mFrameIndex].Allocate(mDevice, size);
+        return mPools[mFrameIndex].Allocate(mDevice, size, alignment);
     }
 
     void UploadBufferAllocator::NextFrame()
@@ -202,10 +175,10 @@ namespace MRenderer
 
         PlacedAllocation HeapMemoryAllocator::Allocate(const AllocationDesc& desc)
         {
-            ASSERT(desc.heap_type == mHeapType);
-            ASSERT(GetResourceHeapFlag(desc.resource_desc) == mHeapFlag);
+            ASSERT(desc.HeapType == mHeapType);
+            ASSERT(GetResourceHeapFlag(desc.ResourceDesc) == mHeapFlag);
 
-            D3D12_RESOURCE_ALLOCATION_INFO info = QueryResourceSizeAndAlignment(desc.resource_desc);
+            D3D12_RESOURCE_ALLOCATION_INFO info = QueryResourceSizeAndAlignment(desc.ResourceDesc);
 
             auto[heap_index, meta_allocation] = MetaAllocate(desc,static_cast<uint32>(info.SizeInBytes), static_cast<uint32>(info.Alignment));
             if(heap_index == -1)
@@ -213,7 +186,7 @@ namespace MRenderer
                 return {};
             }
 
-            bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+            bool use_default_value = desc.ResourceDesc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
             ID3D12Resource* resource;
             ThrowIfFailed
@@ -221,9 +194,9 @@ namespace MRenderer
                 mDevice->CreatePlacedResource(
                     mPages[heap_index].Get(),
                     meta_allocation->Offset,
-                    &desc.resource_desc,
-                    desc.initial_state,
-                    use_default_value ? &desc.defalut_value : nullptr,
+                    &desc.ResourceDesc,
+                    desc.InitialState,
+                    use_default_value ? &desc.DefaultValue : nullptr,
                     IID_PPV_ARGS(&resource)
                 )
             );
@@ -239,7 +212,7 @@ namespace MRenderer
 
         void HeapMemoryAllocator::Free(PlacedAllocation& allocation)
         {
-            ASSERT(allocation.Resource && allocation.PageIndex && allocation.Source == this);
+            ASSERT(allocation.Resource && allocation.Source == this);
 
             mPagesMeta[allocation.PageIndex].Free(allocation.MetaAllocation);
             allocation.Resource->Release();
@@ -249,7 +222,7 @@ namespace MRenderer
 
         void HeapMemoryAllocator::ReleasePlacedMemory(PlacedAllocation& allocation)
         {
-            ASSERT(allocation.Resource && allocation.PageIndex && allocation.Source == this);
+            ASSERT(allocation.Resource && allocation.Source == this);
 
             mPagesMeta[allocation.PageIndex].Free(allocation.MetaAllocation);
         }
@@ -262,7 +235,7 @@ namespace MRenderer
             // heap alignment will always be D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT (i.e 64KB)
             // for MSAA textures which requires 4MB alignment, they will be allocated as commited resources
             heap_desc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-            heap_desc.Properties = D3D12_HEAP_PROPERTIES{ .Type = heap_type };
+            heap_desc.Properties = CD3DX12_HEAP_PROPERTIES(heap_type);
             heap_desc.Flags = heap_flag;
 
             ID3D12Heap* heap;
@@ -271,23 +244,27 @@ namespace MRenderer
             return heap;
         }
 
+        // get gpu resource size and alignment for the given resource description
         D3D12_RESOURCE_ALLOCATION_INFO HeapMemoryAllocator::QueryResourceSizeAndAlignment(D3D12_RESOURCE_DESC desc)
         {
-            // refered from: https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
-            // AllocatorPimpl::GetResourceAllocationInfo
+            // ref: https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator AllocatorPimpl::GetResourceAllocationInfo
+            //      https://github.com/microsoft/DirectX-Graphics-Samples/tree/master/Samples/Desktop/D3D12SmallResources
+            //      https://asawicki.info/news_1726_secrets_of_direct3d_12_resource_alignment
 
-            //Buffers have the same size on all adapters
-            // which is merely the smallest multiple of 64KB that's greater or equal toD3D12_RESOURCE_DESC::Width.
+            // most of dx12 resources are allocated by 64kb alignment or 4mb alignment, some certain resource with mip 0 size less than 64kb can be allocated by 4kb alignment.
+            // this is what this function is trying to do, check if this resource can be 4kb aligned
+
+            // Buffers have a guaranteed 64KB alignment requirement across all adapters
+            // the size of a buffer should be the smallest multiple of 64KB that¡¯s greater than D3D12_RESOURCE_DESC::Width
             if (desc.Alignment == 0 && desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
             {
                 return { AlignUp(static_cast<uint32>(desc.Width), D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT), D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT };
             }
 
-            if (desc.Alignment == 0 && desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && desc.Flags)
-                //(desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)) == D3D12_RESOURCE_FLAG_NONE)
+            // render target and depth stencil can't be 4kb aligned
+            if (desc.Alignment == 0 && desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
+                ((desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)) == D3D12_RESOURCE_FLAG_NONE))
             {
-                //The algorithm here is based on Microsoft sample: "Small Resources Sample"
-                // https://github.com/microsoft/DirectX-Graphics-Samples/tree/master/Samples/Desktop/D3D12SmallResources
                 uint64 alignment = desc.Alignment = desc.SampleDesc.Count > 1 ? D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT : D3D12_SMALL_RESOURCE_PLACEMENT_ALIGNMENT;
                 D3D12_RESOURCE_ALLOCATION_INFO info = mDevice->GetResourceAllocationInfo(0, 1, &desc);
 
@@ -298,6 +275,7 @@ namespace MRenderer
                 }
             }
 
+            // request declined, use dx12 suggested alignment
             desc.Alignment = 0;
             return mDevice->GetResourceAllocationInfo(0, 1, &desc);
         }
@@ -366,11 +344,11 @@ namespace MRenderer
         {
             // allocated as placed resource
             D3D12_HEAP_FLAGS heap_flag;
-            if (desc.resource_desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+            if (desc.ResourceDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
             {
                 heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
             }
-            else if (desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))
+            else if (desc.ResourceDesc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))
             {
                 heap_flag = D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES;
             }
@@ -380,7 +358,7 @@ namespace MRenderer
             }
 
             // find out where to allocate
-            uint32 heap_index = HeapIndex(desc.heap_type, heap_flag);
+            uint32 heap_index = HeapIndex(desc.HeapType, heap_flag);
             PlacedAllocation ret = mHeaps[heap_index]->Allocate(desc);
 
             return ret;
@@ -408,10 +386,12 @@ namespace MRenderer
 
         inline uint32 MultiHeapMemoryAllocator::HeapIndex(D3D12_HEAP_TYPE heap_type, D3D12_HEAP_FLAGS heap_flag)
         {
-            int b = (heap_flag >> 6) - 1; // DeviceHeapFlags = [01000100, 10000100, 11000000], we can get the index by shift D3D12_HEAP_FLAGS to the right by 6 bits and minus 1
+            // DeviceHeapFlags = { D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES : 01000100, D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES : 10000100, D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS : 11000000}
+            // we can get the index by shift D3D12_HEAP_FLAGS to the right by 6 bits and minus 1
+            int b = (heap_flag >> 6) - 1;
             int a = heap_type - DeviceHeapTypes[0];
 
-            int ret = static_cast<int>(a * std::size(DeviceHeapTypes) + b);
+            int ret = static_cast<int>(a * std::size(DeviceHeapFlags) + b);
             ASSERT(ret < DeviceHeapCount && ret >= 0);
 
             return ret;

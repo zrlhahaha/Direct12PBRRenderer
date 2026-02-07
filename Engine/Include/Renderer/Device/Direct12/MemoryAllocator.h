@@ -10,22 +10,28 @@
 
 namespace MRenderer
 {
+    // this is a transient object only valid during the frame it is allocated at
     struct UploadBuffer 
     {
     public:
         UploadBuffer(ID3D12Resource* resource, void* mMapped, uint32 offset, uint32 size)
-            :resource(resource), mapped(mMapped), offset(offset), size(size)
+            :Resource(resource), Mapped(mMapped), Offset(offset), Size(size)
         {
-        
         }
 
-        void Upload(const void* data, size_t data_size);
+        void Upload(const void* data, uint32 data_size);
+
+        // transient object, forbid copy and move operation
+        UploadBuffer(const UploadBuffer&) = delete;
+        UploadBuffer(UploadBuffer&&) = default;
+        UploadBuffer& operator=(UploadBuffer&&) = default;
+        UploadBuffer& operator=(const UploadBuffer&) = delete;
 
     public:
-        ID3D12Resource* resource;
-        void* mapped;
-        uint32 offset;
-        uint32 size;
+        ID3D12Resource* Resource;
+        void* Mapped;
+        uint32 Offset;
+        uint32 Size;
     };
 
 
@@ -34,31 +40,30 @@ namespace MRenderer
     protected:
         struct Page
         {
-            ID3D12Resource* resource;
-            void* mapped;
+            ComPtr<ID3D12Resource> Resource;
+            void* Mapped;
         };
 
         struct LargePageContainer
         {
-            std::vector<Page> pages;
-            size_t page_index;
-            size_t page_size;
+            std::vector<Page> Pages;
+            uint32 PageIndex;
         };
 
     public:
-        static constexpr size_t PageSize = 1024 * 1024; // 1MB
+        static constexpr uint32 PageSize = 8 * 1024 * 1024; // 8MB
 
     public:
         UploadBufferPool() = default;
-        ~UploadBufferPool();
+        ~UploadBufferPool() = default;
         UploadBufferPool(const UploadBufferPool&) = delete;
         UploadBufferPool& operator=(const UploadBufferPool&) = delete;;
 
-        UploadBuffer Allocate(ID3D12Device* device, uint32 size);
+        UploadBuffer Allocate(ID3D12Device* device, uint32 size, uint32 alignment);
         void CleanUp();
 
     protected:
-        UploadBuffer AllocateSmallBuffer(ID3D12Device* device, uint32 size);
+        UploadBuffer AllocateSmallBuffer(ID3D12Device* device, uint32 size, uint32 alignment);
         UploadBuffer AllocateLargeBuffer(ID3D12Device* device, uint32 size);
 
     protected:
@@ -76,7 +81,7 @@ namespace MRenderer
         UploadBufferAllocator(const UploadBufferAllocator&) = delete;
         UploadBufferAllocator& operator=(const UploadBufferAllocator&) = delete;
 
-        UploadBuffer Allocate(uint32 size);
+        UploadBuffer Allocate(uint32 size, uint32 alignment);
         void NextFrame();
 
     protected:
@@ -88,18 +93,18 @@ namespace MRenderer
 
     struct AllocationDesc
     {
-        D3D12_RESOURCE_DESC resource_desc;
-        D3D12_HEAP_TYPE heap_type;
-        D3D12_RESOURCE_STATES initial_state;
+        D3D12_RESOURCE_DESC ResourceDesc;
+        D3D12_HEAP_TYPE HeapType;
+        D3D12_RESOURCE_STATES InitialState;
         // optimized default value of resource for RT, depth stencil. it's ignored for other kind of resource
-        D3D12_CLEAR_VALUE defalut_value;
-        bool prefer_commited;
+        D3D12_CLEAR_VALUE DefaultValue;
+        bool PreferCommited;
     };
 
     namespace D3D12Memory
     {
         // In order to support Tier 1 heaps, buffers, textures, and RT, DS textures need to be categorized into different heaps.
-// ref: https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_resource_heap_tier
+        // ref: https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_resource_heap_tier
         constexpr D3D12_HEAP_FLAGS DeviceHeapFlags[] = { D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES, D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES, D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS };
         constexpr D3D12_HEAP_TYPE DeviceHeapTypes[] = { D3D12_HEAP_TYPE_DEFAULT, D3D12_HEAP_TYPE_UPLOAD, D3D12_HEAP_TYPE_READBACK };
         constexpr uint32 DeviceHeapCount = static_cast<uint32>(std::size(DeviceHeapTypes) * std::size(DeviceHeapFlags)); // each heap usage has three kind of heap, default, upload and readback
@@ -257,7 +262,7 @@ namespace MRenderer
             MemoryAllocation* Allocate(AllocationDesc desc) override
             {
                 MemoryAllocation* ret = mAllocationAllocator.Allocate();
-                if (desc.prefer_commited)
+                if (desc.PreferCommited)
                 {
                     ret->Allocation = AllocateCommitedResouce(mDevice, desc);
                 }
@@ -294,16 +299,16 @@ namespace MRenderer
             CommitedAllocation AllocateCommitedResouce(ID3D12Device* device, const AllocationDesc& desc) 
             {
                 ID3D12Resource* res;
-                auto heap_property = CD3DX12_HEAP_PROPERTIES(desc.heap_type);
+                auto heap_property = CD3DX12_HEAP_PROPERTIES(desc.HeapType);
 
-                bool use_default_value = desc.resource_desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+                bool use_default_value = desc.ResourceDesc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
                 ThrowIfFailed(device->CreateCommittedResource(
                     &heap_property,
                     D3D12_HEAP_FLAG_NONE,
-                    &desc.resource_desc,
-                    desc.initial_state,
-                    use_default_value ? &desc.defalut_value : nullptr,
+                    &desc.ResourceDesc,
+                    desc.InitialState,
+                    use_default_value ? &desc.DefaultValue : nullptr,
                     IID_PPV_ARGS(&res)
                 ));
 

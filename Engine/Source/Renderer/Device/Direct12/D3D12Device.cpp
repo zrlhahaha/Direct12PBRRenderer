@@ -357,10 +357,10 @@ namespace MRenderer
 
         // allocate 2d texture
         AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 1, mip_level, 1, 0, resource_flag),
-            .heap_type = D3D12_HEAP_TYPE_DEFAULT,
-            .initial_state = res_state,
-            .defalut_value = clear_value,
+            .ResourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, 1, mip_level, 1, 0, resource_flag),
+            .HeapType = D3D12_HEAP_TYPE_DEFAULT,
+            .InitialState = res_state,
+            .DefaultValue = clear_value,
         };
 
         MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
@@ -460,9 +460,9 @@ namespace MRenderer
 
         // allocate 2d texture arrray
         AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, NumCubeMapFaces, mip_level, 1, 0, unorder_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
-            .heap_type = D3D12_HEAP_TYPE_DEFAULT,
-            .initial_state = D3D12_RESOURCE_STATE_COPY_DEST,
+            .ResourceDesc = CD3DX12_RESOURCE_DESC::Tex2D(dxgi_format, width, height, NumCubeMapFaces, mip_level, 1, 0, unorder_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+            .HeapType = D3D12_HEAP_TYPE_DEFAULT,
+            .InitialState = D3D12_RESOURCE_STATE_COPY_DEST,
         };
 
         MemoryAllocation* allocation = mMemoryAllocator->Allocate(allocation_desc);
@@ -526,9 +526,9 @@ namespace MRenderer
         // allocate constant buffer
         // all constant buffer resides in upload heap for now
         AllocationDesc allocation_desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Buffer(buffer_size),
-            .heap_type = D3D12_HEAP_TYPE_UPLOAD,
-            .initial_state = D3D12_RESOURCE_STATE_GENERIC_READ,
+            .ResourceDesc = CD3DX12_RESOURCE_DESC::Buffer(buffer_size),
+            .HeapType = D3D12_HEAP_TYPE_UPLOAD,
+            .InitialState = D3D12_RESOURCE_STATE_GENERIC_READ,
         };
 
         std::array<D3D12Resource, FrameResourceCount> resource_array;
@@ -584,7 +584,7 @@ namespace MRenderer
         // allocate upload buffer
         ID3D12Resource* raw_resource = dest->Resource()->Resource();
         size_t intermediate_size = GetRequiredIntermediateSize(raw_resource, subres_index_0, mip_levels);
-        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
+        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size), D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
 
         // fill the subresource table for @UpdateSubresources
         constexpr uint32 MAX_SUBRESOURCES_SIZE = 128; // for avoiding heap allocation during this function call, maybe move this to heap memory in the future
@@ -619,7 +619,7 @@ namespace MRenderer
         }
 
         // copy subresources to gpu side
-        UpdateSubresources(command_list, raw_resource, upload_buffer.resource, upload_buffer.offset, subres_index_0, mip_levels, subresources.data());
+        UpdateSubresources(command_list, raw_resource, upload_buffer.Resource, upload_buffer.Offset, subres_index_0, mip_levels, subresources.data());
     }
 
     void D3D12ResourceAllocator::CommitBuffer(D3D12Resource* resource, const void* data, uint32 size)
@@ -630,7 +630,7 @@ namespace MRenderer
         size_t intermediate_size = GetRequiredIntermediateSize(resource->Resource(), 0, 1);
 
         ASSERT(size <= intermediate_size);
-        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size));
+        UploadBuffer upload_buffer = mUploadBufferAllocator->Allocate(static_cast<uint32>(intermediate_size), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
         // copy data to the memory in the upload heap
         upload_buffer.Upload(data, size);
@@ -639,7 +639,7 @@ namespace MRenderer
         ID3D12GraphicsCommandList* command_list = mResourceCommandList[mFrameIndex].Get();
 
         resource->TransitionBarrier(command_list, D3D12_RESOURCE_STATE_COPY_DEST);
-        command_list->CopyBufferRegion(resource->Resource(), 0, upload_buffer.resource, upload_buffer.offset, size);
+        command_list->CopyBufferRegion(resource->Resource(), 0, upload_buffer.Resource, upload_buffer.Offset, size);
     }
 
     D3D12Resource D3D12ResourceAllocator::CreateDeviceBuffer(uint32 size, bool unordered_access, const void* initial_data/*=nullptr*/, D3D12_RESOURCE_STATES initial_state/*=D3D12_RESOURCE_STATE_COMMON*/)
@@ -648,9 +648,9 @@ namespace MRenderer
         D3D12_RESOURCE_STATES state = initial_data ? D3D12_RESOURCE_STATE_COPY_DEST : initial_state;
 
         AllocationDesc desc = {
-            .resource_desc = CD3DX12_RESOURCE_DESC::Buffer(size, unordered_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
-            .heap_type = D3D12_HEAP_TYPE_DEFAULT,
-            .initial_state = state,
+            .ResourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, unordered_access ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE),
+            .HeapType = D3D12_HEAP_TYPE_DEFAULT,
+            .InitialState = state,
         };
         D3D12Resource resource(mMemoryAllocator->Allocate(desc), this, state, nullptr);
 
